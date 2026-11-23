@@ -145,10 +145,10 @@ function Login({ onDone }) {
         {/* Brand Header */}
         <div className="text-center pb-3">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-warm-900 text-white shadow-soft">
-            <span className="font-display text-base font-bold tracking-wider text-brand-300">MR</span>
+            <span className="font-logo text-lg text-brand-300">MR</span>
           </div>
-          <h1 className="mt-3 font-display text-xl sm:text-2xl font-bold tracking-tight text-warm-900">
-            Mols Resto POS
+          <h1 className="mt-3 font-logo text-2xl sm:text-3xl font-normal tracking-wide text-warm-900">
+            Mols Resto <span className="font-display text-xs uppercase tracking-wider font-bold text-brand px-1.5 py-0.5 rounded bg-brand-50 border border-brand-200 ml-1">POS</span>
           </h1>
           <p className="text-xs sm:text-sm font-medium text-warm-500 mt-0.5">Hospitality Management Terminal</p>
         </div>
@@ -172,8 +172,8 @@ function Login({ onDone }) {
                 onClick={() => setForm({ email: p.email, password: 'password123' })}
                 className={`rounded-xl px-2.5 py-1 text-xs font-medium transition ${
                   form.email === p.email
-                    ? 'bg-warm-900 text-white shadow-xs'
-                    : 'bg-warm-100 text-warm-700 hover:bg-warm-200'
+                    ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold'
+                    : 'bg-warm-100 text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950'
                 }`}
               >
                 {p.label}
@@ -242,16 +242,23 @@ function Dashboard({ me, onLogout }) {
 
   const refreshAll = useCallback(async () => {
     try {
-      const [o, t, s, sc] = await Promise.all([
+      const calls = [
         api('/staff/orders'),
         api('/staff/tables'),
-        api('/staff/ingredients'),
         api('/staff/service-calls'),
-      ])
+      ]
+      if (isKitchen || isManager) {
+        calls.push(api('/staff/ingredients'))
+      }
+      const [o, t, sc, s] = await Promise.all(calls)
       setOrders(o || [])
       setTables(t || [])
-      setStockData(s || { ingredients: [], alerts: [], low_count: 0 })
       setServiceCalls(sc || [])
+      if (isKitchen || isManager) {
+        setStockData(s || { ingredients: [], alerts: [], low_count: 0 })
+      } else {
+        setStockData({ ingredients: [], alerts: [], low_count: 0 })
+      }
 
       if (isManager) {
         const [m, sl] = await Promise.all([api('/staff/menu'), api('/staff/sales')])
@@ -261,7 +268,7 @@ function Dashboard({ me, onLogout }) {
     } catch (e) {
       console.error(e)
     }
-  }, [isManager])
+  }, [isKitchen, isManager])
 
   useEffect(() => {
     refreshAll()
@@ -287,13 +294,15 @@ function Dashboard({ me, onLogout }) {
         icon: Icons.Kitchen,
       })
     if (isCashier) list.push({ id: 'cashier', label: 'Cashier POS', icon: Icons.Cashier })
-    if (isManager) list.push({ id: 'tables', label: 'Floor Tables', icon: Icons.Table })
+    if (isManager || isCashier) list.push({ id: 'tables', label: 'Floor Tables', icon: Icons.Table })
     if (isManager) list.push({ id: 'menu', label: 'Menu Catalog', icon: Icons.Menu })
-    list.push({
-      id: 'stocks',
-      label: `Inventory ${stockData.low_count > 0 ? `(${stockData.low_count} Low)` : ''}`,
-      icon: Icons.Stock,
-    })
+    if (isKitchen || isManager) {
+      list.push({
+        id: 'stocks',
+        label: `Inventory ${stockData.low_count > 0 ? `(${stockData.low_count} Low)` : ''}`,
+        icon: Icons.Stock,
+      })
+    }
     if (isManager) list.push({ id: 'qr', label: 'QR Generator', icon: Icons.Qr })
     if (isSuper) list.push({ id: 'users', label: 'Staff Roster', icon: Icons.Users })
     return list
@@ -317,7 +326,7 @@ function Dashboard({ me, onLogout }) {
             </div>
             <button
               onClick={() => resolveService(serviceCalls[0].id)}
-              className="shrink-0 rounded-lg bg-white/20 px-2.5 py-1 text-xs font-semibold hover:bg-white/30"
+              className="shrink-0 rounded-lg bg-white/20 px-2.5 py-1 text-xs font-semibold text-white hover:bg-white/30 hover:text-white active:bg-white/40 active:text-white transition"
             >
               Acknowledge ✓
             </button>
@@ -328,11 +337,11 @@ function Dashboard({ me, onLogout }) {
           {/* Brand & Role Station */}
           <div className="flex items-center gap-2.5 shrink-0">
             <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-warm-900 text-white shadow-xs">
-              <span className="font-display text-sm font-bold text-brand-300">MR</span>
+              <span className="font-logo text-sm text-brand-300">MR</span>
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-display text-base font-bold text-warm-900">Mols Resto</span>
+                <span className="font-logo text-xl font-normal tracking-wide text-warm-900">Mols Resto</span>
                 <span className={`rounded-md border px-2 py-0.2 text-[11px] font-medium ${role.badge}`}>
                   {role.title}
                 </span>
@@ -351,8 +360,8 @@ function Dashboard({ me, onLogout }) {
                   onClick={() => setActiveTab(item.id)}
                   className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-xs sm:text-sm font-medium transition ${
                     active
-                      ? 'bg-warm-900 text-white shadow-xs ring-1 ring-warm-900 font-semibold'
-                      : 'text-warm-700 hover:bg-warm-100 hover:text-warm-900'
+                      ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs ring-1 ring-warm-900 font-semibold'
+                      : 'text-warm-700 hover:bg-warm-100 hover:text-warm-950 active:bg-warm-200 active:text-warm-950'
                   }`}
                 >
                   <Icon />
@@ -369,7 +378,7 @@ function Dashboard({ me, onLogout }) {
                 setSoundEnabled(!soundEnabled)
                 if (!soundEnabled) playChime('ticket')
               }}
-              className="rounded-xl p-2 text-warm-600 hover:bg-warm-100 hover:text-warm-900 transition"
+              className="rounded-xl p-2 text-warm-600 hover:bg-warm-100 hover:text-warm-950 active:bg-warm-200 active:text-warm-950 transition"
               title={soundEnabled ? 'Chime sound enabled' : 'Chime sound muted'}
             >
               <Icons.Volume muted={!soundEnabled} />
@@ -381,7 +390,7 @@ function Dashboard({ me, onLogout }) {
 
             <button
               onClick={onLogout}
-              className="rounded-xl border border-warm-300 px-3 py-1 text-xs sm:text-sm font-medium text-warm-800 hover:bg-warm-50 transition"
+              className="rounded-xl border border-warm-300 px-3 py-1 text-xs sm:text-sm font-medium text-warm-800 hover:bg-warm-100 hover:text-warm-950 hover:border-warm-400 active:bg-warm-200 active:text-warm-950 transition"
             >
               Exit
             </button>
@@ -408,15 +417,15 @@ function Dashboard({ me, onLogout }) {
           />
         )}
 
-        {activeTab === 'tables' && isManager && (
-          <TableManagement tables={tables} reload={refreshAll} />
+        {activeTab === 'tables' && (isManager || isCashier) && (
+          <TableManagement tables={tables} reload={refreshAll} isManager={isManager} />
         )}
 
         {activeTab === 'menu' && isManager && (
           <MenuCatalog menu={menu} reload={refreshAll} />
         )}
 
-        {activeTab === 'stocks' && (
+        {activeTab === 'stocks' && (isKitchen || isManager) && (
           <InventoryManagement
             data={stockData}
             reload={refreshAll}
@@ -480,7 +489,9 @@ function KitchenDisplay({ orders, reload }) {
                 key={c}
                 onClick={() => setFilterCat(c)}
                 className={`rounded-lg px-2.5 py-1 uppercase text-xs font-medium tracking-wide transition ${
-                  filterCat === c ? 'bg-white text-warm-900 shadow-xs font-semibold' : 'text-warm-600'
+                  filterCat === c
+                    ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold'
+                    : 'text-warm-600 hover:text-warm-950 hover:bg-warm-200/70 active:bg-warm-300 active:text-warm-950'
                 }`}
               >
                 {c}
@@ -489,7 +500,7 @@ function KitchenDisplay({ orders, reload }) {
           </div>
           <button
             onClick={reload}
-            className="rounded-xl bg-warm-900 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-white hover:bg-warm-800 transition"
+            className="rounded-xl bg-warm-900 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white transition"
           >
             Refresh
           </button>
@@ -592,7 +603,7 @@ function KitchenDisplay({ orders, reload }) {
                       {/* Advance Button */}
                       <button
                         onClick={() => advance(ticket.id, stg.next)}
-                        className="w-full rounded-xl bg-warm-900 py-2.5 font-display text-xs sm:text-sm font-medium tracking-wide text-white uppercase shadow-xs hover:bg-brand active:scale-[0.98] transition"
+                        className="w-full rounded-xl bg-warm-900 py-2.5 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-xs hover:bg-brand hover:text-white active:bg-brand-dark active:text-white active:scale-[0.98] transition"
                       >
                         {stg.btn} →
                       </button>
@@ -625,6 +636,9 @@ function CashierBilling({ orders, tables, reload, cashierName }) {
   const [cashTendered, setCashTendered] = useState('')
   const [showReceiptModal, setShowReceiptModal] = useState(false)
   const [processing, setProcessing] = useState(false)
+  const [showMerge, setShowMerge] = useState(false)
+  const [mergeSrc, setMergeSrc] = useState('')
+  const [mergeTgt, setMergeTgt] = useState('')
 
   const activeOrders = useMemo(() => {
     if (!selectedTable) return []
@@ -701,8 +715,18 @@ function CashierBilling({ orders, tables, reload, cashierName }) {
             Active: {tables.filter((t) => t.status === 'occupied').length} / {tables.length} Tables
           </span>
           <button
+            onClick={() => {
+              setMergeSrc(selectedTable ? String(selectedTable) : '')
+              setMergeTgt('')
+              setShowMerge(true)
+            }}
+            className="rounded-xl border border-purple-200 bg-purple-50 px-3.5 py-1.5 text-xs sm:text-sm font-semibold text-purple-900 hover:bg-purple-100 hover:text-purple-950 active:bg-purple-200 active:text-purple-950 transition"
+          >
+            Merge Tables
+          </button>
+          <button
             onClick={reload}
-            className="rounded-xl bg-warm-900 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-white hover:bg-warm-800 transition"
+            className="rounded-xl bg-warm-900 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white transition"
           >
             Refresh
           </button>
@@ -752,9 +776,29 @@ function CashierBilling({ orders, tables, reload, cashierName }) {
                   </div>
 
                   {t.merged_with && (
-                    <span className="mt-1.5 text-[10px] font-medium text-purple-800 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200">
-                      Linked to {t.merged_with}
-                    </span>
+                    <div className="mt-1.5 flex items-center justify-between text-[10px] font-medium text-purple-800 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                      <span>Linked to #{t.merged_with}</span>
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          if (confirm(`Unmerge Table #${t.number}?`)) {
+                            try {
+                              await api('/staff/tables/unmerge', {
+                                method: 'POST',
+                                body: { number: t.number },
+                              })
+                              reload()
+                            } catch (err) {
+                              alert(err.message || 'Failed to unmerge')
+                            }
+                          }
+                        }}
+                        className="text-rose-600 hover:text-rose-800 underline ml-1 font-semibold"
+                      >
+                        Unmerge
+                      </button>
+                    </div>
                   )}
 
                   <div className="mt-3 pt-2 border-t border-warm-200/60 flex items-center justify-between">
@@ -796,6 +840,36 @@ function CashierBilling({ orders, tables, reload, cashierName }) {
                 </button>
               </div>
 
+              {(() => {
+                const curTable = tables.find((t) => t.number === selectedTable)
+                if (curTable?.merged_with) {
+                  return (
+                    <div className="flex items-center justify-between rounded-xl bg-purple-50 p-2.5 text-xs font-medium text-purple-900 border border-purple-200">
+                      <span>Merged into Table #{curTable.merged_with}</span>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await api('/staff/tables/unmerge', {
+                              method: 'POST',
+                              body: { number: selectedTable },
+                            })
+                            alert(`Table #${selectedTable} unmerged successfully!`)
+                            reload()
+                          } catch (e) {
+                            alert(e.message || 'Failed to unmerge')
+                          }
+                        }}
+                        className="rounded-lg bg-rose-600 px-2.5 py-1 text-white font-semibold text-xs hover:bg-rose-700 active:bg-rose-800 transition"
+                      >
+                        Unmerge Table
+                      </button>
+                    </div>
+                  )
+                }
+                return null
+              })()}
+
               {aggregated.length === 0 ? (
                 <p className="py-6 text-center text-xs sm:text-sm text-warm-400">No active bill for this table.</p>
               ) : (
@@ -827,8 +901,8 @@ function CashierBilling({ orders, tables, reload, cashierName }) {
                           onClick={() => setDiscountPercent(d)}
                           className={`rounded-xl py-1.5 font-mono font-medium transition ${
                             discountPercent === d
-                              ? 'bg-warm-900 text-white shadow-xs font-semibold'
-                              : 'bg-warm-100 text-warm-800 hover:bg-warm-200'
+                              ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold'
+                              : 'bg-warm-100 text-warm-800 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950'
                           }`}
                         >
                           {d === 0 ? 'None' : `${d}%`}
@@ -855,8 +929,8 @@ function CashierBilling({ orders, tables, reload, cashierName }) {
                           onClick={() => setSplitCount(n)}
                           className={`rounded-xl py-1.5 font-mono font-medium transition ${
                             splitCount === n
-                              ? 'bg-warm-900 text-white shadow-xs font-semibold'
-                              : 'bg-warm-100 text-warm-800 hover:bg-warm-200'
+                              ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold'
+                              : 'bg-warm-100 text-warm-800 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950'
                           }`}
                         >
                           {n === 1 ? '1 Pay' : `${n} Ways`}
@@ -896,8 +970,8 @@ function CashierBilling({ orders, tables, reload, cashierName }) {
                         onClick={() => setPaymentMode(m.id)}
                         className={`rounded-xl py-2 font-display text-xs sm:text-sm font-medium transition ${
                           paymentMode === m.id
-                            ? 'bg-warm-900 text-white shadow-xs font-semibold'
-                            : 'bg-warm-100 text-warm-800 hover:bg-warm-200'
+                            ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold'
+                            : 'bg-warm-100 text-warm-800 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950'
                         }`}
                       >
                         {m.label}
@@ -931,7 +1005,7 @@ function CashierBilling({ orders, tables, reload, cashierName }) {
                   <div className="flex gap-2 pt-1.5">
                     <button
                       onClick={() => setShowReceiptModal(true)}
-                      className="flex items-center justify-center gap-1.5 flex-1 rounded-xl border border-warm-300 py-2.5 text-xs sm:text-sm font-medium text-warm-800 hover:bg-warm-50 transition"
+                      className="flex items-center justify-center gap-1.5 flex-1 rounded-xl border border-warm-300 py-2.5 text-xs sm:text-sm font-medium text-warm-800 hover:bg-warm-100 hover:text-warm-950 hover:border-warm-400 active:bg-warm-200 active:text-warm-950 transition"
                     >
                       <Icons.Print />
                       <span>Receipt</span>
@@ -940,7 +1014,7 @@ function CashierBilling({ orders, tables, reload, cashierName }) {
                     <button
                       onClick={handlePay}
                       disabled={processing}
-                      className="flex-1 rounded-xl bg-emerald-600 py-2.5 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-md hover:bg-emerald-700 active:scale-95 transition disabled:opacity-50"
+                      className="flex-1 rounded-xl bg-emerald-600 py-2.5 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-md hover:bg-emerald-700 hover:text-white active:bg-emerald-800 active:text-white active:scale-95 transition disabled:opacity-50"
                     >
                       {processing ? 'Clearing...' : 'Settle & Close'}
                     </button>
@@ -958,7 +1032,7 @@ function CashierBilling({ orders, tables, reload, cashierName }) {
           <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl space-y-4">
             <div id="printable-receipt" className="font-mono text-xs text-black space-y-2.5">
               <div className="text-center pb-2.5 border-b border-dashed border-black">
-                <h3 className="font-black text-base tracking-wider">MOLS RESTO</h3>
+                <h3 className="font-logo text-xl tracking-wider">MOLS RESTO</h3>
                 <p className="text-[11px]">123 Culinary Row · Tel: 555-0199</p>
                 <p className="text-[11px]">Table #{selectedTable} · Server: {cashierName}</p>
                 <p className="text-[10px]">{new Date().toLocaleString()}</p>
@@ -1003,18 +1077,89 @@ function CashierBilling({ orders, tables, reload, cashierName }) {
             <div className="flex gap-2 pt-2 print-hide">
               <button
                 onClick={() => window.print()}
-                className="flex-1 rounded-xl bg-warm-900 py-3.5 font-display text-xs sm:text-sm font-bold text-white shadow-md hover:bg-brand transition"
+                className="flex-1 rounded-xl bg-warm-900 py-3.5 font-display text-xs sm:text-sm font-bold text-white shadow-md hover:bg-brand hover:text-white active:bg-brand-dark active:text-white transition"
               >
                 Print Receipt
               </button>
               <button
                 onClick={() => setShowReceiptModal(false)}
-                className="rounded-xl border border-warm-300 px-4 py-3.5 text-xs sm:text-sm font-bold text-warm-700 hover:bg-warm-100"
+                className="rounded-xl border border-warm-300 px-4 py-3.5 text-xs sm:text-sm font-bold text-warm-700 hover:bg-warm-100 hover:text-warm-950 hover:border-warm-400 active:bg-warm-200 active:text-warm-950 transition"
               >
                 Close
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Quick Merge Modal for Cashier */}
+      {showMerge && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-warm-950/60 p-4 backdrop-blur-xs">
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault()
+              try {
+                await api('/staff/tables/merge', {
+                  method: 'POST',
+                  body: { source_number: Number(mergeSrc), target_number: Number(mergeTgt) },
+                })
+                setShowMerge(false)
+                alert(`Table #${mergeSrc} merged into Table #${mergeTgt}!`)
+                reload()
+              } catch (err) {
+                alert(err.message || 'Failed to merge tables')
+              }
+            }}
+            className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl space-y-3.5"
+          >
+            <h3 className="font-display text-base sm:text-lg font-bold text-warm-900">Merge Two Tables</h3>
+            <p className="text-xs text-warm-500">Combine orders from source table into target master table.</p>
+            <div>
+              <label className="block text-xs sm:text-sm font-semibold text-warm-700 mb-1">Source Table to Merge</label>
+              <select
+                required
+                className={inp + ' w-full font-mono text-sm'}
+                value={mergeSrc}
+                onChange={(e) => setMergeSrc(e.target.value)}
+              >
+                <option value="">Select source table</option>
+                {tables.map((t) => (
+                  <option key={t.number} value={t.number}>Table #{t.number} ({t.status})</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs sm:text-sm font-semibold text-warm-700 mb-1">Target Master Table</label>
+              <select
+                required
+                className={inp + ' w-full font-mono text-sm'}
+                value={mergeTgt}
+                onChange={(e) => setMergeTgt(e.target.value)}
+              >
+                <option value="">Select target table</option>
+                {tables
+                  .filter((t) => String(t.number) !== String(mergeSrc))
+                  .map((t) => (
+                    <option key={t.number} value={t.number}>Table #{t.number} ({t.status})</option>
+                  ))}
+              </select>
+            </div>
+            <div className="flex gap-2 pt-1.5">
+              <button
+                type="button"
+                onClick={() => setShowMerge(false)}
+                className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="flex-1 rounded-xl bg-purple-600 py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-purple-700 hover:text-white active:bg-purple-800 active:text-white transition"
+              >
+                Merge Tables
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>
@@ -1024,7 +1169,7 @@ function CashierBilling({ orders, tables, reload, cashierName }) {
 // -------------------------------------------------------------
 // 5. TABLE MANAGEMENT (Add / Move / Merge / Unmerge)
 // -------------------------------------------------------------
-function TableManagement({ tables, reload }) {
+function TableManagement({ tables, reload, isManager }) {
   const [showAdd, setShowAdd] = useState(false)
   const [formAdd, setFormAdd] = useState({ number: '', capacity: 4 })
 
@@ -1104,21 +1249,23 @@ function TableManagement({ tables, reload }) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setShowAdd(true)}
-            className="rounded-xl bg-brand px-3.5 py-1.5 font-display text-xs sm:text-sm font-medium text-white shadow-xs hover:bg-brand-dark transition"
-          >
-            + Add Table
-          </button>
+          {isManager && (
+            <button
+              onClick={() => setShowAdd(true)}
+              className="rounded-xl bg-brand px-3.5 py-1.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white active:scale-95 transition"
+            >
+              + Add Table
+            </button>
+          )}
           <button
             onClick={() => setShowMove(true)}
-            className="rounded-xl border border-warm-300 bg-white px-3.5 py-1.5 text-xs sm:text-sm font-medium text-warm-800 hover:bg-warm-50 transition"
+            className="rounded-xl border border-warm-300 bg-white px-3.5 py-1.5 text-xs sm:text-sm font-medium text-warm-800 hover:bg-warm-100 hover:text-warm-950 hover:border-warm-400 active:bg-warm-200 active:text-warm-950 transition"
           >
             Move Orders
           </button>
           <button
             onClick={() => setShowMerge(true)}
-            className="rounded-xl border border-purple-200 bg-purple-50 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-purple-900 hover:bg-purple-100 transition"
+            className="rounded-xl border border-purple-200 bg-purple-50 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-purple-900 hover:bg-purple-100 hover:text-purple-950 hover:border-purple-300 active:bg-purple-200 active:text-purple-950 transition"
           >
             Merge Tables
           </button>
@@ -1163,12 +1310,14 @@ function TableManagement({ tables, reload }) {
               <span className="font-mono text-xs sm:text-sm font-medium text-warm-800">
                 {t.unpaid_total > 0 ? money(t.unpaid_total) : 'Clean'}
               </span>
-              <button
-                onClick={() => handleDelete(t.number)}
-                className="text-xs font-medium text-rose-600 hover:text-rose-800"
-              >
-                Delete
-              </button>
+              {isManager && (
+                <button
+                  onClick={() => handleDelete(t.number)}
+                  className="text-xs font-medium text-rose-600 hover:text-rose-800"
+                >
+                  Delete
+                </button>
+              )}
             </div>
           </div>
         ))}
@@ -1203,13 +1352,13 @@ function TableManagement({ tables, reload }) {
               <button
                 type="button"
                 onClick={() => setShowAdd(false)}
-                className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700"
+                className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950 transition"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex-1 rounded-xl bg-brand py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs"
+                className="flex-1 rounded-xl bg-brand py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white transition"
               >
                 Add Table
               </button>
@@ -1255,13 +1404,13 @@ function TableManagement({ tables, reload }) {
               <button
                 type="button"
                 onClick={() => setShowMove(false)}
-                className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700"
+                className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950 transition"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex-1 rounded-xl bg-brand py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs"
+                className="flex-1 rounded-xl bg-brand py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white transition"
               >
                 Transfer Orders
               </button>
@@ -1307,13 +1456,13 @@ function TableManagement({ tables, reload }) {
               <button
                 type="button"
                 onClick={() => setShowMerge(false)}
-                className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700"
+                className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950 transition"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex-1 rounded-xl bg-purple-700 py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs"
+                className="flex-1 rounded-xl bg-purple-700 py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-purple-800 hover:text-white active:bg-purple-900 active:text-white transition"
               >
                 Merge Tables
               </button>
@@ -1377,7 +1526,7 @@ function MenuCatalog({ menu, reload }) {
         </div>
         <button
           onClick={() => setShowAdd(true)}
-          className="rounded-xl bg-brand px-3.5 py-1.5 font-display text-xs sm:text-sm font-medium text-white shadow-xs hover:bg-brand-dark transition"
+          className="rounded-xl bg-brand px-3.5 py-1.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white active:scale-95 transition"
         >
           + Add New Dish
         </button>
@@ -1625,8 +1774,8 @@ function DishFormModal({ item, onClose, onSaved, existingCategories = [] }) {
                 onClick={() => setCategoryMode('select')}
                 className={`rounded-lg px-2.5 py-1 transition ${
                   categoryMode === 'select'
-                    ? 'bg-white text-warm-900 shadow-xs font-semibold'
-                    : 'text-warm-600 hover:text-warm-900'
+                    ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold'
+                    : 'text-warm-600 hover:text-warm-950 hover:bg-warm-100 active:bg-warm-200 active:text-warm-950'
                 }`}
               >
                 Existing Categories
@@ -1636,8 +1785,8 @@ function DishFormModal({ item, onClose, onSaved, existingCategories = [] }) {
                 onClick={() => setCategoryMode('new')}
                 className={`rounded-lg px-2.5 py-1 transition ${
                   categoryMode === 'new'
-                    ? 'bg-white text-warm-900 shadow-xs font-semibold'
-                    : 'text-warm-600 hover:text-warm-900'
+                    ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold'
+                    : 'text-warm-600 hover:text-warm-950 hover:bg-warm-100 active:bg-warm-200 active:text-warm-950'
                 }`}
               >
                 + Add New
@@ -1799,14 +1948,14 @@ function DishFormModal({ item, onClose, onSaved, existingCategories = [] }) {
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200 transition"
+            className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950 transition"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={busy}
-            className="flex-1 rounded-xl bg-brand py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-dark transition disabled:opacity-50"
+            className="flex-1 rounded-xl bg-brand py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white transition disabled:opacity-50"
           >
             {busy ? 'Saving Recipe...' : item ? 'Update Recipe' : 'Add Dish to Menu'}
           </button>
@@ -2079,7 +2228,9 @@ function InventoryManagement({ data, reload, canManage, userName }) {
             <button
               onClick={() => setFilter('all')}
               className={`rounded-lg px-2.5 py-1 transition ${
-                filter === 'all' ? 'bg-white text-warm-900 shadow-xs font-semibold' : 'text-warm-600 hover:text-warm-900'
+                filter === 'all'
+                  ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold'
+                  : 'text-warm-600 hover:text-warm-950 hover:bg-warm-200/70 active:bg-warm-300 active:text-warm-950'
               }`}
             >
               All ({ingredients.length})
@@ -2087,7 +2238,9 @@ function InventoryManagement({ data, reload, canManage, userName }) {
             <button
               onClick={() => setFilter('low')}
               className={`rounded-lg px-2.5 py-1 transition ${
-                filter === 'low' ? 'bg-amber-100 text-amber-900 font-semibold' : 'text-warm-600 hover:text-warm-900'
+                filter === 'low'
+                  ? 'bg-amber-100 text-amber-950 border border-amber-300 hover:bg-amber-200 hover:text-amber-950 active:bg-amber-300 active:text-amber-950 font-semibold shadow-xs'
+                  : 'text-warm-600 hover:text-warm-950 hover:bg-warm-200/70 active:bg-warm-300 active:text-warm-950'
               }`}
             >
               Low ({stats.lowCount})
@@ -2095,7 +2248,9 @@ function InventoryManagement({ data, reload, canManage, userName }) {
             <button
               onClick={() => setFilter('out')}
               className={`rounded-lg px-2.5 py-1 transition ${
-                filter === 'out' ? 'bg-rose-100 text-rose-900 font-semibold' : 'text-warm-600 hover:text-warm-900'
+                filter === 'out'
+                  ? 'bg-rose-100 text-rose-950 border border-rose-300 hover:bg-rose-200 hover:text-rose-950 active:bg-rose-300 active:text-rose-950 font-semibold shadow-xs'
+                  : 'text-warm-600 hover:text-warm-950 hover:bg-warm-200/70 active:bg-warm-300 active:text-warm-950'
               }`}
             >
               Out ({stats.outCount})
@@ -2103,7 +2258,9 @@ function InventoryManagement({ data, reload, canManage, userName }) {
             <button
               onClick={() => setFilter('healthy')}
               className={`rounded-lg px-2.5 py-1 transition ${
-                filter === 'healthy' ? 'bg-emerald-100 text-emerald-900 font-semibold' : 'text-warm-600 hover:text-warm-900'
+                filter === 'healthy'
+                  ? 'bg-emerald-100 text-emerald-950 border border-emerald-300 hover:bg-emerald-200 hover:text-emerald-950 active:bg-emerald-300 active:text-emerald-950 font-semibold shadow-xs'
+                  : 'text-warm-600 hover:text-warm-950 hover:bg-warm-200/70 active:bg-warm-300 active:text-warm-950'
               }`}
             >
               Healthy ({stats.healthyCount})
@@ -2126,7 +2283,7 @@ function InventoryManagement({ data, reload, canManage, userName }) {
           {/* Reorder Procurement Sheet */}
           <button
             onClick={() => setShowReorderSheet(true)}
-            className="flex items-center gap-1.5 rounded-xl border border-warm-300 bg-warm-50 px-3 py-1.5 text-xs sm:text-sm font-semibold text-warm-800 hover:bg-warm-100 active:scale-95 transition shadow-xs"
+            className="flex items-center gap-1.5 rounded-xl border border-warm-300 bg-warm-50 px-3 py-1.5 text-xs sm:text-sm font-semibold text-warm-800 hover:bg-warm-100 hover:text-warm-950 hover:border-warm-400 active:bg-warm-200 active:text-warm-950 active:scale-95 transition shadow-xs"
           >
             <span>📋</span>
             <span>Reorder Sheet</span>
@@ -2140,7 +2297,7 @@ function InventoryManagement({ data, reload, canManage, userName }) {
           {canManage && (
             <button
               onClick={() => setShowAdd(true)}
-              className="rounded-xl bg-brand px-3.5 py-1.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-dark active:scale-95 transition"
+              className="rounded-xl bg-brand px-3.5 py-1.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white active:scale-95 transition"
             >
               + Add Supply
             </button>
@@ -2148,7 +2305,7 @@ function InventoryManagement({ data, reload, canManage, userName }) {
 
           <button
             onClick={reload}
-            className="rounded-xl bg-warm-900 px-3 py-1.5 text-xs sm:text-sm font-medium text-white hover:bg-warm-800 transition"
+            className="rounded-xl bg-warm-900 px-3 py-1.5 text-xs sm:text-sm font-medium text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white transition"
           >
             Refresh
           </button>
@@ -2233,28 +2390,28 @@ function InventoryManagement({ data, reload, canManage, userName }) {
                     <div className="flex items-center gap-1 font-mono text-xs font-medium">
                       <button
                         onClick={() => adjust(ing, -1)}
-                        className="h-7 w-7 rounded-lg bg-warm-100 hover:bg-warm-200 text-warm-800 active:scale-95 transition"
+                        className="h-7 w-7 rounded-lg bg-warm-100 hover:bg-warm-200 hover:text-warm-950 text-warm-800 active:bg-warm-300 active:text-warm-950 active:scale-95 transition"
                         title="Deduct 1"
                       >
                         -1
                       </button>
                       <button
                         onClick={() => adjust(ing, 1)}
-                        className="h-7 w-7 rounded-lg bg-warm-100 hover:bg-warm-200 text-warm-800 active:scale-95 transition"
+                        className="h-7 w-7 rounded-lg bg-warm-100 hover:bg-warm-200 hover:text-warm-950 text-warm-800 active:bg-warm-300 active:text-warm-950 active:scale-95 transition"
                         title="Add 1"
                       >
                         +1
                       </button>
                       <button
                         onClick={() => adjust(ing, 5)}
-                        className="h-7 px-1.5 rounded-lg bg-warm-100 hover:bg-warm-200 text-warm-800 active:scale-95 transition"
+                        className="h-7 px-1.5 rounded-lg bg-warm-100 hover:bg-warm-200 hover:text-warm-950 text-warm-800 active:bg-warm-300 active:text-warm-950 active:scale-95 transition"
                         title="Add 5"
                       >
                         +5
                       </button>
                       <button
                         onClick={() => setAuditIng(ing)}
-                        className="h-7 px-2 rounded-lg border border-warm-300 bg-white text-warm-800 hover:bg-warm-50 font-sans text-[11px] font-semibold active:scale-95 transition shadow-2xs"
+                        className="h-7 px-2 rounded-lg border border-warm-300 bg-white text-warm-800 hover:bg-warm-100 hover:text-warm-950 hover:border-warm-400 active:bg-warm-200 active:text-warm-950 font-sans text-[11px] font-semibold active:scale-95 transition shadow-2xs"
                         title="Set exact counted physical inventory"
                       >
                         Count
@@ -2266,14 +2423,14 @@ function InventoryManagement({ data, reload, canManage, userName }) {
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={() => setRestockIng(ing)}
-                      className="flex items-center justify-center gap-1 rounded-xl bg-emerald-50 border border-emerald-300 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100 active:scale-95 transition"
+                      className="flex items-center justify-center gap-1 rounded-xl bg-emerald-50 border border-emerald-300 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100 hover:text-emerald-950 hover:border-emerald-400 active:bg-emerald-200 active:text-emerald-950 active:scale-95 transition"
                     >
                       <span>🚚</span>
                       <span>Restock</span>
                     </button>
                     <button
                       onClick={() => setAlertPromptIng(ing)}
-                      className="flex items-center justify-center gap-1 rounded-xl bg-amber-50 border border-amber-300 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 active:scale-95 transition"
+                      className="flex items-center justify-center gap-1 rounded-xl bg-amber-50 border border-amber-300 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 hover:text-amber-950 hover:border-amber-400 active:bg-amber-200 active:text-amber-950 active:scale-95 transition"
                     >
                       <span>🔔</span>
                       <span>Alert Low</span>
@@ -2491,14 +2648,14 @@ function RestockModal({ ingredient, onClose, onSaved }) {
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200 transition"
+            className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950 transition"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={busy}
-            className="flex-1 rounded-xl bg-emerald-600 py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-emerald-700 active:scale-95 transition"
+            className="flex-1 rounded-xl bg-emerald-600 py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-emerald-700 hover:text-white active:bg-emerald-800 active:text-white active:scale-95 transition"
           >
             {busy ? 'Saving...' : `Add +${amount || 0} ${ingredient.unit}`}
           </button>
@@ -2564,14 +2721,14 @@ function AuditCountModal({ ingredient, onClose, onSaved }) {
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700"
+            className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950 transition"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={busy}
-            className="flex-1 rounded-xl bg-warm-900 py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-warm-800"
+            className="flex-1 rounded-xl bg-warm-900 py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white transition"
           >
             {busy ? 'Saving...' : 'Set Physical Count'}
           </button>
@@ -2624,8 +2781,8 @@ function KitchenAlertModal({ ingredient, onClose, onSend }) {
                 }}
                 className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition ${
                   selectedPreset === p && !customNote
-                    ? 'bg-amber-100 text-amber-950 border border-amber-300 font-semibold'
-                    : 'bg-warm-50 text-warm-700 border border-warm-200 hover:bg-warm-100'
+                    ? 'bg-amber-100 text-amber-950 border border-amber-300 hover:bg-amber-200 hover:text-amber-950 active:bg-amber-300 active:text-amber-950 font-semibold shadow-xs'
+                    : 'bg-warm-50 text-warm-700 border border-warm-200 hover:bg-warm-100 hover:text-warm-950 hover:border-warm-300 active:bg-warm-200 active:text-warm-950'
                 }`}
               >
                 {p}
@@ -2649,14 +2806,14 @@ function KitchenAlertModal({ ingredient, onClose, onSend }) {
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700"
+            className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950 transition"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={handleSend}
-            className="flex-1 rounded-xl bg-amber-600 py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-amber-700"
+            className="flex-1 rounded-xl bg-amber-600 py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-amber-700 hover:text-white active:bg-amber-800 active:text-white transition"
           >
             Dispatch Alert
           </button>
@@ -2730,8 +2887,10 @@ function EditSupplyModal({ ingredient, onClose, onSaved }) {
                 type="button"
                 key={u}
                 onClick={() => setUnit(u)}
-                className={`px-2 py-0.5 rounded-md text-[11px] font-mono ${
-                  unit === u ? 'bg-warm-900 text-white font-semibold' : 'bg-warm-100 text-warm-700 hover:bg-warm-200'
+                className={`px-2 py-0.5 rounded-md text-[11px] font-mono transition ${
+                  unit === u
+                    ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white font-semibold'
+                    : 'bg-warm-100 text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950'
                 }`}
               >
                 {u}
@@ -2773,14 +2932,14 @@ function EditSupplyModal({ ingredient, onClose, onSaved }) {
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700"
+            className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950 transition"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={busy}
-            className="flex-1 rounded-xl bg-brand py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-dark"
+            className="flex-1 rounded-xl bg-brand py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white transition"
           >
             {busy ? 'Saving...' : 'Update Supply'}
           </button>
@@ -2875,8 +3034,10 @@ function AddSupplyModal({ onClose, onSaved }) {
               type="button"
               key={u}
               onClick={() => setForm({ ...form, unit: u })}
-              className={`px-2 py-0.5 rounded-md text-[11px] font-mono ${
-                form.unit === u ? 'bg-warm-900 text-white font-semibold' : 'bg-warm-100 text-warm-700 hover:bg-warm-200'
+              className={`px-2 py-0.5 rounded-md text-[11px] font-mono transition ${
+                form.unit === u
+                  ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white font-semibold'
+                  : 'bg-warm-100 text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950'
               }`}
             >
               {u}
@@ -2918,14 +3079,14 @@ function AddSupplyModal({ onClose, onSaved }) {
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700"
+            className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950 transition"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={busy}
-            className="flex-1 rounded-xl bg-brand py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-dark"
+            className="flex-1 rounded-xl bg-brand py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white transition"
           >
             {busy ? 'Saving...' : 'Add Supply'}
           </button>
@@ -3006,7 +3167,7 @@ function ReorderSheetModal({ items, totalCost, copied, onCopy, onClose }) {
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700"
+            className="flex-1 rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950 transition"
           >
             Close
           </button>
@@ -3015,14 +3176,14 @@ function ReorderSheetModal({ items, totalCost, copied, onCopy, onClose }) {
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="flex-1 rounded-xl border border-warm-300 bg-white py-2.5 text-xs sm:text-sm font-semibold text-warm-800 hover:bg-warm-50 active:scale-95 transition"
+                className="flex-1 rounded-xl border border-warm-300 bg-white py-2.5 text-xs sm:text-sm font-semibold text-warm-800 hover:bg-warm-100 hover:text-warm-950 hover:border-warm-400 active:bg-warm-200 active:text-warm-950 transition"
               >
                 🖨️ Print Sheet
               </button>
               <button
                 type="button"
                 onClick={onCopy}
-                className="flex-1 rounded-xl bg-warm-900 py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-warm-800 active:scale-95 transition flex items-center justify-center gap-1.5"
+                className="flex-1 rounded-xl bg-warm-900 py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white transition flex items-center justify-center gap-1.5"
               >
                 <span>{copied ? '✓ Copied PO Text!' : '📋 Copy Supplier Text'}</span>
               </button>
@@ -3078,13 +3239,13 @@ function SalesDashboard({ sales, reload }) {
         <div className="flex gap-2">
           <button
             onClick={exportCSV}
-            className="rounded-xl border border-warm-300 bg-warm-50 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-warm-800 hover:bg-warm-100 transition"
+            className="rounded-xl border border-warm-300 bg-warm-50 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-warm-800 hover:bg-warm-100 hover:text-warm-950 hover:border-warm-400 active:bg-warm-200 active:text-warm-950 transition"
           >
             Export CSV
           </button>
           <button
             onClick={reload}
-            className="rounded-xl bg-warm-900 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-white hover:bg-warm-800 transition"
+            className="rounded-xl bg-warm-900 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white transition"
           >
             Refresh
           </button>
@@ -3194,7 +3355,7 @@ function QrPrintStation({ tables, reload }) {
         </div>
         <button
           onClick={() => window.print()}
-          className="rounded-xl bg-warm-900 px-4 py-2 text-xs sm:text-sm font-medium text-white hover:bg-warm-800 transition"
+          className="rounded-xl bg-warm-900 px-4 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white transition"
         >
           Print Placards
         </button>
@@ -3207,7 +3368,7 @@ function QrPrintStation({ tables, reload }) {
             className="rounded-3xl border border-warm-200 bg-white p-5 text-center shadow-card flex flex-col items-center justify-between break-inside-avoid"
           >
             <QRCodeSVG
-              value={`${base}/t/${t.token}`}
+              value={`${base}/scan/${t.number}`}
               size={140}
               className="p-2 bg-white rounded-xl shadow-xs"
             />
@@ -3215,12 +3376,24 @@ function QrPrintStation({ tables, reload }) {
               <span className="font-display text-lg font-bold text-warm-900">Table #{t.number}</span>
               <p className="text-xs font-mono text-warm-500 mt-0.5">Scan to view menu &amp; order</p>
             </div>
-            <button
-              onClick={() => rotate(t.number)}
-              className="mt-2.5 font-mono text-xs text-warm-500 hover:text-warm-900 underline print:hidden"
-            >
-              Rotate Key
-            </button>
+            <div className="mt-2.5 flex items-center justify-center gap-2 print:hidden">
+              <a
+                href={`${base}/scan/${t.number}`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-xs text-brand hover:underline font-medium"
+                title="Preview table ordering experience"
+              >
+                Open Table ↗
+              </a>
+              <span className="text-warm-300">·</span>
+              <button
+                onClick={() => rotate(t.number)}
+                className="font-mono text-xs text-warm-500 hover:text-warm-900 underline"
+              >
+                Rotate Token
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -3272,7 +3445,7 @@ function StaffRoster({ currentUserId, reload }) {
         </div>
         <button
           onClick={() => setShowAdd(true)}
-          className="rounded-xl bg-brand px-3.5 py-1.5 font-display text-xs sm:text-sm font-medium text-white shadow-xs hover:bg-brand-dark transition"
+          className="rounded-xl bg-brand px-3.5 py-1.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white active:scale-95 transition"
         >
           + Add Staff
         </button>
@@ -3321,13 +3494,13 @@ function StaffRoster({ currentUserId, reload }) {
             <button
               type="button"
               onClick={() => setShowAdd(false)}
-              className="rounded-xl bg-warm-100 px-3.5 py-2 text-xs sm:text-sm font-medium text-warm-700"
+              className="rounded-xl bg-warm-100 px-3.5 py-2 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950 transition"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="rounded-xl bg-brand px-4 py-2 font-display text-xs sm:text-sm font-semibold text-white shadow-xs"
+              className="rounded-xl bg-brand px-4 py-2 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white transition"
             >
               Create Account
             </button>

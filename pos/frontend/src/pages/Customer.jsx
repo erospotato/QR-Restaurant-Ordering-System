@@ -53,13 +53,154 @@ const STAGE_PROGRESS = {
   served: { label: 'Served to Table', step: 4, color: 'text-stone-600', bg: 'bg-stone-600' },
 }
 
+function getItemPreferenceConfig(dish) {
+  if (!dish) {
+    return {
+      type: 'savory',
+      label: 'Spice Level Preference',
+      options: ['Non-Spicy', 'Mild Spice', 'Medium Spice 🔥', 'Extra Spicy 🔥🔥'],
+    }
+  }
+
+  const cat = (dish.category || '').toLowerCase()
+  const name = (dish.name || '').toLowerCase()
+
+  // 1. Drinks / Beverages (Ice & Sweetness levels)
+  if (
+    cat.includes('drink') ||
+    cat.includes('beverage') ||
+    cat.includes('coffee') ||
+    cat.includes('tea') ||
+    name.includes('latte') ||
+    name.includes('brew') ||
+    name.includes('fizz') ||
+    name.includes('tea') ||
+    name.includes('sparkler') ||
+    name.includes('lemonade') ||
+    name.includes('smoothie') ||
+    name.includes('water')
+  ) {
+    const isHotDrink = name.includes('hot') || name.includes('espresso')
+    return {
+      type: 'drink',
+      label: 'Drink Preferences',
+      iceOptions: isHotDrink
+        ? ['Served Hot', 'Warm', 'Add Ice Cubes']
+        : ['Regular Ice', 'Less Ice', 'No Ice', 'Extra Ice'],
+      sweetOptions: ['100% Normal', '70% Less Sweet', '30% Mild Sweet', 'Unsweetened (0%)'],
+    }
+  }
+
+  // 2. Steaks & Prime Beef Cuts (Meat Doneness)
+  if (
+    name.includes('steak') ||
+    name.includes('ribeye') ||
+    name.includes('wagyu') ||
+    name.includes('sirloin') ||
+    name.includes('tenderloin') ||
+    name.includes('filet') ||
+    name.includes('angus') ||
+    name.includes('beef') ||
+    name.includes('burger')
+  ) {
+    return {
+      type: 'steak',
+      label: 'Meat Doneness Preference',
+      options: ['Medium Rare (Chef Pick)', 'Rare', 'Medium', 'Medium Well', 'Well Done'],
+    }
+  }
+
+  // 3. Desserts & Sweets (Serving style & temperature)
+  if (
+    cat.includes('dessert') ||
+    cat.includes('sweet') ||
+    name.includes('cake') ||
+    name.includes('tiramisu') ||
+    name.includes('brûlée') ||
+    name.includes('cheesecake') ||
+    name.includes('churros') ||
+    name.includes('tart') ||
+    name.includes('gelato') ||
+    name.includes('ice cream')
+  ) {
+    return {
+      type: 'dessert',
+      label: 'Serving Style Preference',
+      options: ['Standard Serving', 'Extra Sauce / Drizzle', 'Less Sweet', 'Serve Warm', 'Serve Chilled'],
+    }
+  }
+
+  // 4. Starters, Sides & Appetizers (Preparation & Dressing)
+  if (
+    cat.includes('starter') ||
+    cat.includes('side') ||
+    cat.includes('appetizer') ||
+    name.includes('fries') ||
+    name.includes('salad') ||
+    name.includes('wings') ||
+    name.includes('calamari') ||
+    name.includes('prawns') ||
+    name.includes('arancini') ||
+    name.includes('soup') ||
+    name.includes('bread') ||
+    name.includes('asparagus') ||
+    name.includes('rice') ||
+    name.includes('mash')
+  ) {
+    return {
+      type: 'side',
+      label: 'Preparation Preference',
+      options: ['Standard', 'Sauce / Dressing on Side', 'Extra Crispy', 'Less Salt'],
+    }
+  }
+
+  // 5. Savory Mains, Pasta, Pizza, Rice & Bowls (Spice Level)
+  return {
+    type: 'savory',
+    label: 'Spice Level Preference',
+    options: ['Non-Spicy', 'Mild Spice', 'Medium Spice 🔥', 'Extra Spicy 🔥🔥'],
+  }
+}
+
 export default function Customer() {
   const { token } = useParams()
   const [tableInfo, setTableInfo] = useState(null)
   const [menu, setMenu] = useState([])
   const [orders, setOrders] = useState([])
   const [invalid, setInvalid] = useState(false)
+  const [sessionSettled, setSessionSettled] = useState(false)
+  const [settledTable, setSettledTable] = useState(null)
   const [loading, setLoading] = useState(true)
+
+  // Welcoming splash loading experience
+  const [showSplash, setShowSplash] = useState(true)
+  const [splashProgress, setSplashProgress] = useState(15)
+  const [splashStatus, setSplashStatus] = useState('Connecting to Table...')
+
+  useEffect(() => {
+    const t1 = setTimeout(() => {
+      setSplashProgress(45)
+      setSplashStatus('Setting table dining experience...')
+    }, 500)
+    const t2 = setTimeout(() => {
+      setSplashProgress(80)
+      setSplashStatus("Curating today's fresh culinary menu...")
+    }, 1100)
+    const t3 = setTimeout(() => {
+      setSplashProgress(100)
+      setSplashStatus('Ready to dine')
+    }, 1800)
+    const t4 = setTimeout(() => {
+      setShowSplash(false)
+    }, 2300)
+
+    return () => {
+      clearTimeout(t1)
+      clearTimeout(t2)
+      clearTimeout(t3)
+      clearTimeout(t4)
+    }
+  }, [])
 
   // Navigation
   const [tab, setTab] = useState('menu') // 'menu' | 'orders'
@@ -74,13 +215,16 @@ export default function Customer() {
 
   // Modals & Drawers
   const [activeItemModal, setActiveItemModal] = useState(null)
-  const [modalSpice, setModalSpice] = useState('Default')
+  const [modalPrefOption, setModalPrefOption] = useState('')
+  const [modalPrefIce, setModalPrefIce] = useState('Regular Ice')
+  const [modalPrefSweet, setModalPrefSweet] = useState('100% Normal')
   const [modalNotes, setModalNotes] = useState('')
   const [modalQty, setModalQty] = useState(1)
 
   const [showCartDrawer, setShowCartDrawer] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [showCallStaffModal, setShowCallStaffModal] = useState(false)
+  const [showBillConfirmModal, setShowBillConfirmModal] = useState(false)
 
   // Alerts & Submitting states
   const [serviceAlert, setServiceAlert] = useState('')
@@ -95,11 +239,26 @@ export default function Customer() {
         api('/menu'),
         api(`/tables/${token}/orders`),
       ])
+
+      if (t?.settled) {
+        setSessionSettled(true)
+        if (t.table) setSettledTable(t.table)
+        setLoading(false)
+        setShowSplash(false)
+        return
+      }
+
       setTableInfo(t)
       setMenu(m || [])
       setOrders(o || [])
+      setSessionSettled(false)
     } catch (err) {
-      if (err.status === 404) setInvalid(true)
+      if (err.status === 403) {
+        setSessionSettled(true)
+        setShowSplash(false)
+      } else if (err.status === 404) {
+        setInvalid(true)
+      }
     } finally {
       setLoading(false)
     }
@@ -113,20 +272,39 @@ export default function Customer() {
 
   const openCustomizer = (item) => {
     const existing = cart[item.id]
+    const config = getItemPreferenceConfig(item)
     setActiveItemModal(item)
     setModalQty(existing ? existing.qty : 1)
-    setModalSpice(existing?.spice || 'Default')
     setModalNotes(existing?.notes || '')
+
+    if (config.type === 'drink') {
+      if (existing?.spice) {
+        const parts = existing.spice.split(',').map((s) => s.trim())
+        setModalPrefIce(parts[0] || config.iceOptions[0])
+        setModalPrefSweet(parts[1] || config.sweetOptions[0])
+      } else {
+        setModalPrefIce(config.iceOptions[0])
+        setModalPrefSweet(config.sweetOptions[0])
+      }
+    } else {
+      setModalPrefOption(existing?.spice || config.options[0])
+    }
   }
 
   const confirmCustomization = () => {
     if (!activeItemModal) return
     const id = activeItemModal.id
+    const config = getItemPreferenceConfig(activeItemModal)
+    const prefTag =
+      config.type === 'drink'
+        ? `${modalPrefIce}, ${modalPrefSweet}`
+        : modalPrefOption
+
     setCart((prev) => ({
       ...prev,
       [id]: {
         qty: modalQty,
-        spice: modalSpice !== 'Default' ? modalSpice : '',
+        spice: prefTag,
         notes: modalNotes.trim(),
       },
     }))
@@ -153,8 +331,12 @@ export default function Customer() {
         body: { type, notes },
       })
       setShowCallStaffModal(false)
-      setServiceAlert(`Staff notified: ${type.toUpperCase()}. We will assist your table shortly.`)
-      setTimeout(() => setServiceAlert(''), 4500)
+      if (type === 'bill') {
+        setServiceAlert(`🧾 Table bill requested! Our staff will bring your check and wireless terminal to Table #${tableInfo?.table || ''} shortly.`)
+      } else {
+        setServiceAlert(`Staff notified: ${type.toUpperCase()}. We will assist your table shortly.`)
+      }
+      setTimeout(() => setServiceAlert(''), 5500)
     } catch (e) {
       alert(e.message || 'Failed to call staff')
     }
@@ -238,6 +420,66 @@ export default function Customer() {
     return orders.reduce((sum, o) => sum + (o.total || 0), 0)
   }, [orders])
 
+  if (sessionSettled) {
+    const tableNum = settledTable || tableInfo?.table
+    return (
+      <div className="grid min-h-screen place-items-center bg-warm-100/70 p-4 sm:p-6 text-center font-sans">
+        <div className="w-full max-w-md rounded-3xl bg-white p-7 sm:p-9 shadow-card border border-warm-200 animate-in fade-in zoom-in-95 duration-200">
+          <div className="mx-auto flex h-18 w-18 items-center justify-center rounded-3xl bg-emerald-50 text-emerald-600 border border-emerald-200/80 shadow-xs">
+            <svg className="h-9 w-9" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+
+          <div className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-emerald-100/80 px-3 py-0.5 text-xs font-semibold text-emerald-900 border border-emerald-200">
+            <span>Bill Settled · Paid</span>
+          </div>
+
+          <h1 className="mt-3 font-display text-2xl sm:text-3xl font-bold text-warm-900">
+            Dining Session Closed
+          </h1>
+
+          <p className="mt-2 text-sm text-warm-600 leading-relaxed">
+            Thank you for dining with us at <span className="font-logo text-base font-semibold text-warm-900">Mols Resto</span>
+            {tableNum ? ` at Table #${tableNum}` : ''}! The bill for your table has been settled and this session is now closed.
+          </p>
+
+          <div className="mt-5 rounded-2xl bg-warm-50 p-4 text-xs text-warm-700 border border-warm-200 text-left space-y-1.5">
+            <div className="flex items-center gap-2 font-semibold text-warm-900">
+              <Icons.Utensils />
+              <span>Ordering Locked</span>
+            </div>
+            <p className="text-warm-600 leading-relaxed">
+              Customers are not allowed to place further orders on this settled bill. If you wish to order more dishes or drinks, please rescan your table's QR code.
+            </p>
+          </div>
+
+          <div className="mt-6 flex flex-col gap-2.5">
+            {tableNum ? (
+              <a
+                href={`/scan/${tableNum}`}
+                className="w-full rounded-xl bg-warm-900 py-3 text-xs sm:text-sm font-semibold text-white shadow-md hover:bg-warm-800 transition active:scale-95 text-center flex items-center justify-center gap-2"
+              >
+                <span>Rescan Table #{tableNum} QR Code</span>
+                <span>→</span>
+              </a>
+            ) : (
+              <button
+                onClick={() => window.location.reload()}
+                className="w-full rounded-xl bg-warm-900 py-3 text-xs sm:text-sm font-semibold text-white shadow-md hover:bg-warm-800 transition active:scale-95 text-center"
+              >
+                Refresh Session
+              </button>
+            )}
+            <p className="text-[11px] text-warm-400 font-mono">
+              Or point your smartphone camera at the table placard
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (invalid) {
     return (
       <div className="grid min-h-screen place-items-center bg-warm-100 p-6 text-center">
@@ -254,14 +496,108 @@ export default function Customer() {
     )
   }
 
-  if (loading) {
+  if (showSplash || loading) {
     return (
-      <div className="grid min-h-screen place-items-center bg-warm-50">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-10 w-10 animate-spin rounded-full border-3 border-brand border-t-transparent" />
-          <span className="font-display text-sm font-bold tracking-wider text-warm-700 uppercase">
-            Loading Dining Experience...
+      <div className="relative min-h-screen flex flex-col justify-between overflow-hidden bg-gradient-to-b from-white via-rose-50/40 to-white text-warm-900 select-none animate-in fade-in duration-300">
+        {/* Ambient High-End Restaurant Background Artwork with White & Red Style */}
+        <div className="absolute inset-0 z-0">
+          <img
+            src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1600&auto=format&fit=crop&q=80"
+            alt="Mols Resto Ambience"
+            className="h-full w-full object-cover opacity-[0.08] mix-blend-multiply filter blur-[0.5px] scale-105"
+          />
+          {/* Soft White & Crimson Glow Overlays */}
+          <div className="absolute inset-0 bg-gradient-to-b from-white/95 via-white/80 to-white/95" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(225,29,72,0.06)_0%,transparent_70%)]" />
+
+          {/* Crimson & Rose Luxury Ambient Orbs */}
+          <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-96 h-96 bg-brand-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-10 right-4 w-72 h-72 bg-rose-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute top-1/3 -left-20 w-80 h-80 bg-brand-600/10 rounded-full blur-3xl pointer-events-none" />
+        </div>
+
+        {/* Top Header Tag */}
+        <div className="relative z-10 w-full px-6 pt-8 flex items-center justify-between text-xs tracking-widest font-mono uppercase">
+          <span className="flex items-center gap-1.5 font-semibold text-brand">
+            <span className="h-2 w-2 rounded-full bg-brand animate-ping" />
+            <span>Smart QR Dining</span>
           </span>
+          {tableInfo?.table && (
+            <span className="rounded-full bg-brand-50 px-3.5 py-1 text-brand font-semibold border border-brand-200 shadow-2xs">
+              Table #{tableInfo.table}
+            </span>
+          )}
+        </div>
+
+        {/* Center Stage: Restaurant Logo & Fancy Branding (White & Red Style) */}
+        <div className="relative z-10 my-auto w-full max-w-md mx-auto px-6 text-center space-y-6">
+          {/* Logo Insignia Crest in Crisp White & Brand Red */}
+          <div className="relative mx-auto flex h-24 w-24 sm:h-28 sm:w-28 items-center justify-center rounded-3xl bg-white border-2 border-brand/20 shadow-[0_12px_35px_-8px_rgba(185,28,28,0.22)] ring-8 ring-brand-50/80">
+            <span className="absolute top-2 left-2 h-1.5 w-1.5 rounded-full bg-brand/40" />
+            <span className="absolute top-2 right-2 h-1.5 w-1.5 rounded-full bg-brand/40" />
+            <span className="absolute bottom-2 left-2 h-1.5 w-1.5 rounded-full bg-brand/40" />
+            <span className="absolute bottom-2 right-2 h-1.5 w-1.5 rounded-full bg-brand/40" />
+
+            <div className="flex flex-col items-center">
+              <span className="font-logo text-3xl sm:text-4xl font-normal tracking-wider text-brand">
+                MR
+              </span>
+              <span className="text-[9px] uppercase tracking-[0.3em] text-brand-900 font-mono mt-0.5 font-bold">
+                EST. 2024
+              </span>
+            </div>
+          </div>
+
+          {/* Restaurant Title & Tagline */}
+          <div className="space-y-1.5">
+            <h1 className="font-logo text-4xl sm:text-5xl md:text-6xl font-normal tracking-wide text-brand">
+              Mols Resto
+            </h1>
+            <p className="font-mono text-xs sm:text-sm uppercase tracking-[0.3em] text-warm-600 font-semibold">
+              Artisan Kitchen &amp; Bistro
+            </p>
+          </div>
+
+          {/* Table Hospitality Banner */}
+          <div className="inline-flex items-center gap-2 rounded-2xl bg-white border border-brand-200/80 px-4 py-2.5 text-xs sm:text-sm text-warm-800 shadow-sm">
+            <span className="text-brand font-bold">📍</span>
+            <span className="font-medium">
+              {tableInfo
+                ? `Welcome to Table #${tableInfo.table} ${tableInfo.merged_with ? `(Merged with ${tableInfo.merged_with})` : ''}`
+                : 'Welcome to your table dining experience'}
+            </span>
+          </div>
+
+          {/* Animated Red Progress Indicator */}
+          <div className="pt-3 space-y-2 max-w-xs mx-auto">
+            <div className="flex justify-between items-center text-[11px] font-mono text-warm-600 font-medium">
+              <span className="animate-pulse flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-brand animate-ping" />
+                {splashStatus}
+              </span>
+              <span className="font-bold text-brand">{splashProgress}%</span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-rose-100/70 border border-brand-200">
+              <div
+                className="h-full bg-gradient-to-r from-rose-500 via-brand to-brand-dark transition-all duration-500 ease-out shadow-[0_0_12px_rgba(185,28,28,0.5)]"
+                style={{ width: `${splashProgress}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Bar: Quick Enter Button & Footer */}
+        <div className="relative z-10 w-full max-w-md mx-auto px-6 pb-8 space-y-3 text-center">
+          <button
+            onClick={() => setShowSplash(false)}
+            className="w-full flex items-center justify-center gap-2 rounded-2xl bg-brand py-3.5 px-6 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-md hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white active:scale-98 transition duration-150"
+          >
+            <span>Explore Menu &amp; Order</span>
+            <span>→</span>
+          </button>
+          <p className="text-[11px] text-warm-500 font-mono tracking-wide">
+            Tap to open menu immediately or wait to load automatically
+          </p>
         </div>
       </div>
     )
@@ -297,26 +633,31 @@ export default function Customer() {
       {/* Brand Header & Table Info */}
       <header className="sticky top-0 z-30 border-b border-warm-200/90 bg-white/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3.5">
-          {/* Brand Logo & Name */}
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-warm-900 text-white shadow-xs">
-              <span className="font-display text-sm font-bold tracking-wider text-brand-300">MR</span>
+          {/* Brand Logo & Name (Tappable to re-view welcome screen) */}
+          <button
+            type="button"
+            onClick={() => setShowSplash(true)}
+            className="flex items-center gap-2.5 min-w-0 text-left hover:opacity-90 transition group cursor-pointer"
+            title="View Restaurant Welcome Splash"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-warm-900 text-white shadow-xs group-hover:scale-105 transition">
+              <span className="font-logo text-base text-brand-300">MR</span>
             </div>
             <div className="min-w-0">
-              <h1 className="font-display text-base sm:text-lg font-bold tracking-tight text-warm-900 truncate">
-                MOLS RESTO
+              <h1 className="font-logo text-xl sm:text-2xl font-normal tracking-wide text-warm-900 truncate">
+                Mols Resto
               </h1>
               <p className="text-xs font-medium text-warm-500 truncate max-w-[130px] sm:max-w-xs">
                 Table #{tableInfo?.table} {tableInfo?.merged_with ? `· Merged with ${tableInfo.merged_with}` : ''}
               </p>
             </div>
-          </div>
+          </button>
 
           {/* Quick Actions: Call Waiter & Tab Switcher */}
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => setShowCallStaffModal(true)}
-              className="flex items-center gap-1.5 rounded-xl border border-warm-300 bg-warm-50 px-3 py-1.5 text-xs sm:text-sm font-medium text-warm-800 hover:bg-warm-100 transition active:scale-95 shadow-xs"
+              className="flex items-center gap-1.5 rounded-xl border border-warm-300 bg-warm-50 px-3 py-1.5 text-xs sm:text-sm font-medium text-warm-800 hover:bg-warm-100 hover:text-warm-950 hover:border-warm-400 active:bg-warm-200 active:text-warm-950 transition active:scale-95 shadow-xs"
               title="Request table service"
             >
               <Icons.Bell />
@@ -324,24 +665,32 @@ export default function Customer() {
             </button>
 
             {/* Menu / Orders Tabs */}
-            <div className="flex rounded-xl bg-warm-100 p-1 text-xs sm:text-sm font-medium">
+            <div className="flex rounded-xl bg-warm-200/80 p-1 text-xs sm:text-sm font-medium">
               <button
                 onClick={() => setTab('menu')}
-                className={`rounded-lg px-3 py-1 transition ${
-                  tab === 'menu' ? 'bg-white text-warm-900 shadow-xs font-semibold' : 'text-warm-600 hover:text-warm-900'
+                className={`rounded-lg px-3 py-1.5 transition ${
+                  tab === 'menu'
+                    ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold'
+                    : 'text-warm-700 hover:text-warm-950 hover:bg-warm-100/90 active:bg-warm-200 active:text-warm-950'
                 }`}
               >
                 Menu
               </button>
               <button
                 onClick={() => setTab('orders')}
-                className={`relative rounded-lg px-3 py-1 transition ${
-                  tab === 'orders' ? 'bg-white text-warm-900 shadow-xs font-semibold' : 'text-warm-600 hover:text-warm-900'
+                className={`relative rounded-lg px-3 py-1.5 transition ${
+                  tab === 'orders'
+                    ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold'
+                    : 'text-warm-700 hover:text-warm-950 hover:bg-warm-100/90 active:bg-warm-200 active:text-warm-950'
                 }`}
               >
                 Orders
                 {orders.length > 0 && (
-                  <span className="ml-1.5 rounded-full bg-brand px-1.5 py-0.2 font-mono text-[11px] font-semibold text-white">
+                  <span
+                    className={`ml-1.5 rounded-full px-1.5 py-0.2 font-mono text-[11px] font-bold ${
+                      tab === 'orders' ? 'bg-brand text-white ring-1 ring-white/30' : 'bg-brand text-white'
+                    }`}
+                  >
                     {orders.length}
                   </span>
                 )}
@@ -382,8 +731,8 @@ export default function Customer() {
                   onClick={() => setSelectedCategory('all')}
                   className={`whitespace-nowrap rounded-full px-3.5 py-1 text-xs sm:text-sm font-medium transition ${
                     selectedCategory === 'all'
-                      ? 'bg-warm-900 text-white shadow-xs'
-                      : 'bg-warm-100 text-warm-700 hover:bg-warm-200'
+                      ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold'
+                      : 'bg-warm-100 text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950'
                   }`}
                 >
                   All Items
@@ -392,8 +741,8 @@ export default function Customer() {
                   onClick={() => setSelectedCategory('top_sale')}
                   className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1 text-xs sm:text-sm font-medium transition ${
                     selectedCategory === 'top_sale'
-                      ? 'bg-rose-700 text-white shadow-xs'
-                      : 'bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100'
+                      ? 'bg-rose-700 text-white hover:bg-rose-800 hover:text-white active:bg-rose-900 active:text-white shadow-xs font-semibold'
+                      : 'bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100 hover:text-rose-950 hover:border-rose-300 active:bg-rose-200 active:text-rose-950'
                   }`}
                 >
                   <Icons.Flame />
@@ -403,8 +752,8 @@ export default function Customer() {
                   onClick={() => setSelectedCategory('signature')}
                   className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1 text-xs sm:text-sm font-medium transition ${
                     selectedCategory === 'signature'
-                      ? 'bg-amber-700 text-white shadow-xs'
-                      : 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'
+                      ? 'bg-amber-700 text-white hover:bg-amber-800 hover:text-white active:bg-amber-900 active:text-white shadow-xs font-semibold'
+                      : 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 hover:text-amber-950 hover:border-amber-300 active:bg-amber-200 active:text-amber-950'
                   }`}
                 >
                   <Icons.Star />
@@ -416,8 +765,8 @@ export default function Customer() {
                     onClick={() => setSelectedCategory(c)}
                     className={`whitespace-nowrap rounded-full px-3.5 py-1 text-xs sm:text-sm font-medium transition ${
                       selectedCategory === c
-                        ? 'bg-brand text-white shadow-xs'
-                        : 'bg-warm-100 text-warm-700 hover:bg-warm-200'
+                        ? 'bg-brand text-white hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white shadow-xs font-semibold'
+                        : 'bg-warm-100 text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950'
                     }`}
                   >
                     {c}
@@ -549,7 +898,7 @@ export default function Customer() {
                           <div className="flex items-center gap-1 rounded-full bg-warm-100 p-0.5 shadow-inner shrink-0">
                             <button
                               onClick={() => adjustQty(item.id, -1)}
-                              className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-bold text-warm-800 shadow-xs active:scale-95"
+                              className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-bold text-warm-800 shadow-xs hover:bg-warm-100 hover:text-warm-950 active:scale-95 transition"
                             >
                               −
                             </button>
@@ -558,7 +907,7 @@ export default function Customer() {
                             </span>
                             <button
                               onClick={() => adjustQty(item.id, 1)}
-                              className="flex h-6 w-6 items-center justify-center rounded-full bg-brand text-xs font-bold text-white shadow-xs active:scale-95"
+                              className="flex h-6 w-6 items-center justify-center rounded-full bg-brand text-xs font-bold text-white shadow-xs hover:bg-brand-dark hover:text-white active:scale-95 transition"
                             >
                               +
                             </button>
@@ -566,7 +915,7 @@ export default function Customer() {
                         ) : (
                           <button
                             onClick={() => openCustomizer(item)}
-                            className="shrink-0 flex items-center gap-1 rounded-lg bg-warm-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-xs hover:bg-brand active:scale-95 transition"
+                            className="shrink-0 flex items-center gap-1 rounded-lg bg-warm-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-xs hover:bg-brand hover:text-white active:bg-brand-dark active:text-white active:scale-95 transition"
                           >
                             <span>+ Order</span>
                           </button>
@@ -590,11 +939,11 @@ export default function Customer() {
           </div>
         ) : (
           /* ORDERS & BILLING TAB */
-          <div className="space-y-4">
+          <div className="space-y-4 w-full max-w-full">
             {/* Running Table Bill Header */}
-            <div className="rounded-3xl border border-warm-200 bg-white p-5 shadow-card flex items-center justify-between">
+            <div className="w-full max-w-full rounded-3xl border border-warm-200 bg-white p-5 sm:p-6 shadow-card flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3.5">
               <div>
-                <span className="text-xs font-medium uppercase tracking-wider text-warm-500">
+                <span className="text-xs font-semibold uppercase tracking-wider text-warm-500">
                   Current Session Balance
                 </span>
                 <p className="font-mono text-2xl sm:text-3xl font-bold text-warm-900 leading-tight">
@@ -605,16 +954,16 @@ export default function Customer() {
                 </p>
               </div>
 
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-row sm:flex-col gap-2 shrink-0">
                 <button
                   onClick={() => setTab('menu')}
-                  className="rounded-xl bg-brand px-3.5 py-2 text-xs sm:text-sm font-medium text-white shadow-xs hover:bg-brand-dark active:scale-95 transition"
+                  className="flex-1 sm:flex-initial rounded-xl bg-brand px-4 py-2 text-xs sm:text-sm font-medium text-white shadow-xs hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white active:scale-95 transition text-center"
                 >
                   + Add More Dishes
                 </button>
                 <button
-                  onClick={() => callStaff('bill', 'Ready to settle bill')}
-                  className="rounded-xl border border-warm-300 bg-warm-50 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-warm-800 hover:bg-warm-100 transition"
+                  onClick={() => setShowBillConfirmModal(true)}
+                  className="flex-1 sm:flex-initial rounded-xl border border-warm-300 bg-warm-50 px-4 py-2 text-xs sm:text-sm font-medium text-warm-800 hover:bg-warm-100 hover:text-warm-950 hover:border-warm-400 active:bg-warm-200 active:text-warm-950 transition text-center"
                 >
                   Request Bill
                 </button>
@@ -633,29 +982,29 @@ export default function Customer() {
                 </p>
                 <button
                   onClick={() => setTab('menu')}
-                  className="mt-3.5 rounded-xl bg-warm-900 px-4 py-2 text-xs sm:text-sm font-medium text-white shadow-xs"
+                  className="mt-3.5 rounded-xl bg-warm-900 px-4 py-2 text-xs sm:text-sm font-medium text-white shadow-xs hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white transition"
                 >
                   Explore Menu
                 </button>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-4 w-full max-w-full">
                 {orders.map((o, idx) => {
                   const stage = STAGE_PROGRESS[o.status] || STAGE_PROGRESS.new
                   return (
                     <div
                       key={o.id}
-                      className="rounded-3xl border border-warm-200 bg-white p-4.5 shadow-card"
+                      className="w-full max-w-full rounded-3xl border border-warm-200 bg-white p-5 sm:p-6 shadow-card space-y-3.5 overflow-hidden"
                     >
                       {/* Ticket Header & Progress */}
-                      <div className="flex items-center justify-between border-b border-warm-100 pb-2.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-warm-100 pb-3">
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-display text-sm sm:text-base font-bold text-warm-900">
+                            <span className="font-display text-base sm:text-lg font-bold text-warm-900">
                               Round #{orders.length - idx}
                             </span>
                             {o.addon && (
-                              <span className="rounded-md bg-purple-50 px-1.5 py-0.2 text-[11px] font-medium text-purple-700 border border-purple-200">
+                              <span className="rounded-md bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700 border border-purple-200">
                                 Add-on
                               </span>
                             )}
@@ -664,15 +1013,15 @@ export default function Customer() {
                         </div>
 
                         {/* Status Badge */}
-                        <div className="text-right">
+                        <div className="flex items-center sm:flex-col sm:items-end justify-between gap-1.5">
                           <span className={`font-display text-xs sm:text-sm font-semibold ${stage.color}`}>
                             {stage.label}
                           </span>
-                          <div className="mt-1 flex items-center justify-end gap-1">
+                          <div className="flex items-center gap-1">
                             {[1, 2, 3, 4].map((s) => (
                               <span
                                 key={s}
-                                className={`h-1.5 w-3.5 rounded-full ${
+                                className={`h-1.5 w-4 rounded-full ${
                                   s <= stage.step ? stage.bg : 'bg-warm-200'
                                 }`}
                               />
@@ -682,19 +1031,21 @@ export default function Customer() {
                       </div>
 
                       {/* Items Ordered */}
-                      <div className="my-3 space-y-2">
+                      <div className="my-3 space-y-2.5 divide-y divide-warm-50">
                         {o.items.map((it, k) => (
-                          <div key={k} className="flex items-start justify-between text-xs sm:text-sm">
-                            <div className="flex-1 pr-3">
-                              <span className="font-mono font-medium text-warm-600 mr-2">{it.qty}×</span>
-                              <span className="font-medium text-warm-800">{it.name}</span>
+                          <div key={k} className="flex items-start justify-between gap-3 pt-2 first:pt-0 text-xs sm:text-sm">
+                            <div className="flex-1 min-w-0 pr-1">
+                              <div className="flex items-baseline gap-1.5">
+                                <span className="shrink-0 font-mono font-bold text-warm-600">{it.qty}×</span>
+                                <span className="font-semibold text-warm-900 break-words leading-snug">{it.name}</span>
+                              </div>
                               {it.notes && (
-                                <p className="mt-0.5 text-xs text-amber-800 bg-amber-50 px-2 py-0.2 rounded border border-amber-200 inline-block font-normal">
+                                <p className="mt-1 text-xs text-amber-900 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200/80 break-words leading-relaxed max-w-full inline-block">
                                   {it.notes}
                                 </p>
                               )}
                             </div>
-                            <span className="font-mono font-semibold text-warm-900">
+                            <span className="shrink-0 text-right font-mono font-bold text-warm-900 whitespace-nowrap pl-1">
                               {money(it.price * it.qty)}
                             </span>
                           </div>
@@ -703,15 +1054,15 @@ export default function Customer() {
 
                       {/* Special instructions if any */}
                       {o.notes && (
-                        <div className="mt-2 rounded-xl bg-warm-50 p-2.5 text-xs text-warm-700 border border-warm-200">
+                        <div className="mt-3 rounded-2xl bg-warm-50 p-3 text-xs text-warm-700 border border-warm-200 break-words leading-relaxed">
                           <span className="font-semibold text-warm-900">Special Note:</span> {o.notes}
                         </div>
                       )}
 
                       {/* Round Subtotal */}
-                      <div className="mt-3 flex justify-between border-t border-warm-100 pt-2 text-xs sm:text-sm font-medium">
+                      <div className="mt-3.5 flex items-center justify-between border-t border-warm-100 pt-3 text-xs sm:text-sm font-medium">
                         <span className="text-warm-500">Round Total</span>
-                        <span className="font-mono text-sm sm:text-base font-bold text-warm-900">{money(o.total)}</span>
+                        <span className="font-mono text-base sm:text-lg font-bold text-warm-900">{money(o.total)}</span>
                       </div>
                     </div>
                   )
@@ -730,9 +1081,9 @@ export default function Customer() {
               onClick={() => setShowCartDrawer(true)}
               className="flex-1 cursor-pointer flex items-center gap-3 min-w-0"
             >
-              <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand text-white shadow-md">
+              <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand text-white shadow-md overflow-visible">
                 <Icons.Bag />
-                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-warm-900 font-mono text-[10px] font-bold text-white ring-2 ring-white">
+                <span className="absolute -top-1.5 -right-1.5 flex min-w-[20px] h-5 px-1 items-center justify-center rounded-full bg-warm-900 font-mono text-[11px] font-bold text-white shadow-sm ring-2 ring-white z-10">
                   {cartTotalQty}
                 </span>
               </div>
@@ -798,28 +1149,92 @@ export default function Customer() {
                 )}
               </div>
 
-              {/* Spice Level Option */}
-              <div>
-                <label className="block text-xs font-semibold text-warm-700 uppercase tracking-wider mb-1.5">
-                  Spice Level Preference
-                </label>
-                <div className="grid grid-cols-4 gap-1.5 text-xs sm:text-sm">
-                  {['Default', 'Mild', 'Medium', 'Extra Hot'].map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setModalSpice(s)}
-                      className={`rounded-xl py-2 font-medium transition ${
-                        modalSpice === s
-                          ? 'bg-warm-900 text-white shadow-xs'
-                          : 'bg-warm-100 text-warm-700 hover:bg-warm-200'
-                      }`}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {/* Dynamic Preference Options Based on Item Category & Characteristics */}
+              {(() => {
+                const config = getItemPreferenceConfig(activeItemModal)
+                if (config.type === 'drink') {
+                  return (
+                    <div className="space-y-3 rounded-2xl bg-warm-50/80 p-3.5 border border-warm-200/80">
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="block text-xs font-semibold text-warm-800 uppercase tracking-wider">
+                            Ice Level
+                          </label>
+                          <span className="text-[11px] font-mono text-warm-600 font-medium">{modalPrefIce}</span>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-xs">
+                          {config.iceOptions.map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => setModalPrefIce(opt)}
+                              className={`rounded-xl py-2 px-2 text-center font-medium transition ${
+                                modalPrefIce === opt
+                                  ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold'
+                                  : 'bg-white text-warm-700 hover:bg-warm-100 hover:text-warm-950 hover:border-warm-300 active:bg-warm-200 active:text-warm-950 border border-warm-200'
+                              }`}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="block text-xs font-semibold text-warm-800 uppercase tracking-wider">
+                            Sweetness Level
+                          </label>
+                          <span className="text-[11px] font-mono text-warm-600 font-medium">{modalPrefSweet}</span>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-xs">
+                          {config.sweetOptions.map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => setModalPrefSweet(opt)}
+                              className={`rounded-xl py-2 px-2 text-center font-medium transition ${
+                                modalPrefSweet === opt
+                                  ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold'
+                                  : 'bg-white text-warm-700 hover:bg-warm-100 hover:text-warm-950 hover:border-warm-300 active:bg-warm-200 active:text-warm-950 border border-warm-200'
+                              }`}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-semibold text-warm-700 uppercase tracking-wider">
+                        {config.label}
+                      </label>
+                      <span className="text-[11px] font-mono text-brand font-semibold">{modalPrefOption}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 text-xs sm:text-sm">
+                      {config.options.map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => setModalPrefOption(opt)}
+                          className={`rounded-xl py-2 px-3 font-medium transition ${
+                            modalPrefOption === opt
+                              ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold'
+                              : 'bg-warm-100 text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950'
+                          }`}
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Custom Kitchen Notes */}
               <div>
@@ -841,7 +1256,7 @@ export default function Customer() {
                 <div className="flex items-center gap-1.5 rounded-xl bg-warm-100 p-1">
                   <button
                     onClick={() => setModalQty(Math.max(1, modalQty - 1))}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-white font-mono text-sm font-semibold text-warm-800 shadow-xs active:scale-95"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-white font-mono text-sm font-semibold text-warm-800 shadow-xs hover:bg-warm-100 hover:text-warm-950 active:scale-95 transition"
                   >
                     −
                   </button>
@@ -850,7 +1265,7 @@ export default function Customer() {
                   </span>
                   <button
                     onClick={() => setModalQty(modalQty + 1)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-sm font-semibold text-white shadow-xs active:scale-95"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-sm font-semibold text-white shadow-xs hover:bg-brand-dark hover:text-white active:scale-95 transition"
                   >
                     +
                   </button>
@@ -858,7 +1273,7 @@ export default function Customer() {
 
                 <button
                   onClick={confirmCustomization}
-                  className="flex-1 rounded-xl bg-brand py-3 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-md hover:bg-brand-dark active:scale-[0.98] transition truncate"
+                  className="flex-1 rounded-xl bg-brand py-3 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-md hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white active:scale-[0.98] transition truncate"
                 >
                   Add to Order · {money(activeItemModal.price * modalQty)}
                 </button>
@@ -900,12 +1315,15 @@ export default function Customer() {
                     key={id}
                     className="flex items-center justify-between gap-3 rounded-2xl border border-warm-200 bg-warm-50/50 p-3.5"
                   >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-display text-sm sm:text-base font-semibold text-warm-900 truncate">{dish.name}</p>
+                    <div className="flex-1 min-w-0 pr-2">
+                      <p className="font-display text-sm sm:text-base font-semibold text-warm-900 break-words leading-snug">
+                        {dish.name}
+                      </p>
                       <p className="font-mono text-xs text-warm-500">{money(dish.price)} each</p>
                       {(val.spice || val.notes) && (
-                        <p className="mt-0.5 text-xs text-amber-800 bg-amber-50 px-2 py-0.2 rounded inline-block border border-amber-200">
-                          {val.spice} {val.notes}
+                        <p className="mt-1 text-xs text-amber-900 bg-amber-50 px-2.5 py-1 rounded-lg inline-block border border-amber-200/80 break-words leading-relaxed max-w-full">
+                          {val.spice ? <span className="font-semibold mr-1">[{val.spice}]</span> : null}
+                          {val.notes}
                         </p>
                       )}
                     </div>
@@ -962,7 +1380,7 @@ export default function Customer() {
 
               <button
                 onClick={() => setShowConfirmModal(true)}
-                className="w-full rounded-xl bg-brand py-3.5 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-md hover:bg-brand-dark active:scale-[0.98] transition"
+                className="w-full rounded-xl bg-brand py-3.5 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-md hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white active:scale-[0.98] transition"
               >
                 Confirm &amp; Send to Kitchen
               </button>
@@ -989,14 +1407,14 @@ export default function Customer() {
               <button
                 onClick={submitOrder}
                 disabled={isSubmitting}
-                className="w-full rounded-xl bg-brand py-3 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-md hover:bg-brand-dark disabled:opacity-50"
+                className="w-full rounded-xl bg-brand py-3 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-md hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white disabled:opacity-50 transition"
               >
                 {isSubmitting ? 'Sending Ticket...' : 'Yes, Send Order to Kitchen ✓'}
               </button>
               <button
                 onClick={() => setShowConfirmModal(false)}
                 disabled={isSubmitting}
-                className="w-full rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200"
+                className="w-full rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950 transition"
               >
                 Keep Editing
               </button>
@@ -1016,7 +1434,7 @@ export default function Customer() {
               </div>
               <button
                 onClick={() => setShowCallStaffModal(false)}
-                className="text-warm-400 hover:text-warm-600"
+                className="text-warm-400 hover:text-warm-700 transition"
               >
                 <Icons.Close />
               </button>
@@ -1035,8 +1453,15 @@ export default function Customer() {
               ].map((act) => (
                 <button
                   key={act.type}
-                  onClick={() => callStaff(act.type)}
-                  className="rounded-2xl border border-warm-200 bg-warm-50/70 p-3 text-left text-xs sm:text-sm font-medium text-warm-800 hover:bg-warm-100 hover:border-warm-300 transition"
+                  onClick={() => {
+                    if (act.type === 'bill') {
+                      setShowCallStaffModal(false)
+                      setShowBillConfirmModal(true)
+                    } else {
+                      callStaff(act.type)
+                    }
+                  }}
+                  className="rounded-2xl border border-warm-200 bg-warm-50/70 p-3 text-left text-xs sm:text-sm font-medium text-warm-800 hover:bg-warm-100 hover:text-warm-950 hover:border-warm-300 active:bg-warm-200 active:text-warm-950 transition"
                 >
                   {act.label}
                 </button>
@@ -1045,10 +1470,68 @@ export default function Customer() {
 
             <button
               onClick={() => setShowCallStaffModal(false)}
-              className="w-full rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200"
+              className="w-full rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950 transition"
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 6. BILL REQUEST CONFIRMATION MODAL */}
+      {showBillConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-warm-950/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl text-center space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 border border-brand-200 text-brand">
+              <span className="text-2xl">🧾</span>
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="font-display text-base sm:text-lg font-bold text-warm-900">
+                Request Table Bill?
+              </h3>
+              <p className="text-xs text-warm-500 font-mono">
+                Table #{tableInfo?.table} {tableInfo?.merged_with ? `· Merged with ${tableInfo.merged_with}` : ''}
+              </p>
+            </div>
+
+            {/* Bill summary breakdown */}
+            <div className="rounded-2xl bg-warm-50 border border-warm-200 p-3.5 text-left space-y-1.5">
+              <div className="flex justify-between items-center text-xs text-warm-600 font-medium">
+                <span>Total Active Rounds</span>
+                <span className="font-mono font-semibold text-warm-900">
+                  {orders.length} order ticket{orders.length > 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="flex justify-between items-center border-t border-warm-200/80 pt-1.5">
+                <span className="text-xs sm:text-sm font-semibold text-warm-800">Current Session Total</span>
+                <span className="font-mono text-base sm:text-lg font-bold text-brand">
+                  {money(totalBillAllRounds)}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs sm:text-sm text-warm-600 leading-relaxed text-left">
+              Our floor team and cashier will be notified immediately to prepare your final check and bring the wireless payment terminal or paper receipt to your table.
+            </p>
+
+            <div className="mt-3 flex flex-col gap-2 pt-1">
+              <button
+                onClick={() => {
+                  callStaff('bill', 'Ready to settle bill')
+                  setShowBillConfirmModal(false)
+                }}
+                className="w-full rounded-xl bg-brand py-3 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-md hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white transition"
+              >
+                Yes, Request Bill 🧾
+              </button>
+              <button
+                onClick={() => setShowBillConfirmModal(false)}
+                className="w-full rounded-xl bg-warm-100 py-2.5 text-xs sm:text-sm font-medium text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950 transition"
+              >
+                Cancel / Keep Dining
+              </button>
+            </div>
           </div>
         </div>
       )}

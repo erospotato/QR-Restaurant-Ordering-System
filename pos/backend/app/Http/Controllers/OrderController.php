@@ -25,7 +25,13 @@ class OrderController extends Controller
             'items.*.notes' => 'nullable|string|max:255',
         ]);
 
-        $table = DiningTable::where('token', $r->token)->firstOrFail();
+        $table = DiningTable::where('token', $r->token)->first();
+        if (!$table) {
+            if (cache()->has("settled_token:{$r->token}")) {
+                abort(403, 'This table session has ended because the bill was settled. Please rescan the table QR code to start a new order.');
+            }
+            abort(404, 'Invalid table QR token.');
+        }
         abort_unless(RateLimiter::attempt('order:' . $table->id, 10, fn () => true, 60), 429, 'Too many orders, please wait a moment.');
 
         DB::transaction(function () use ($r, $table) {

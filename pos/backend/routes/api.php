@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Route;
 // Public (customers)
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:20,1');
 Route::get('/menu', [MenuController::class, 'index']);
+Route::get('/tables/scan/{number}', [TableController::class, 'scan']);
 Route::get('/tables/{token}', [TableController::class, 'show']);
 Route::get('/tables/{token}/orders', [TableController::class, 'orders']);
 Route::post('/tables/{token}/call-waiter', [TableController::class, 'callService']);
@@ -26,18 +27,25 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/staff/service-calls', [TableController::class, 'serviceCalls']);
         Route::patch('/staff/service-calls/{call}/resolve', [TableController::class, 'resolveServiceCall']);
         Route::patch('/orders/{order}', [OrderController::class, 'status']);
+    });
+
+    // Kitchen + Manager (and Owner + Admin) - Inventory usage & restock (Cashier excluded)
+    Route::middleware(EnsureRole::class . ':kitchen,manager')->group(function () {
         Route::get('/staff/ingredients', [IngredientController::class, 'index']);
         Route::patch('/staff/ingredients/{ingredient}', [IngredientController::class, 'update']);
         Route::post('/staff/ingredients/{ingredient}/restock', [IngredientController::class, 'restock']);
         Route::post('/staff/ingredients/{ingredient}/notify-low', [IngredientController::class, 'notifyLow']);
     });
 
-    // Cashier + Manager (and Owner + Admin)
+    // Cashier + Manager (and Owner + Admin) - Billing & Table Party Merging/Unmerging
     Route::middleware(EnsureRole::class . ':cashier,manager')->group(function () {
         Route::post('/tables/{number}/pay', [TableController::class, 'pay']);
+        Route::post('/staff/tables/move', [TableController::class, 'move']);
+        Route::post('/staff/tables/merge', [TableController::class, 'merge']);
+        Route::post('/staff/tables/unmerge', [TableController::class, 'unmerge']);
     });
 
-    // Manager (and Owner + Admin): Table management, Inventory, Menu, Sales & Dashboard
+    // Manager (and Owner + Admin): Table management, Menu, Inventory Admin & Sales
     Route::middleware(EnsureRole::class . ':manager')->group(function () {
         // Menu management
         Route::get('/staff/menu', [MenuController::class, 'all']);
@@ -45,15 +53,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/menu/{item}', [MenuController::class, 'update']);
         Route::delete('/menu/{item}', [MenuController::class, 'destroy']);
 
-        // Table management (add, remove, move, merge, unmerge, rotate)
+        // Table creation, removal & placard token rotation
         Route::post('/staff/tables', [TableController::class, 'store']);
         Route::delete('/staff/tables/{number}', [TableController::class, 'destroy']);
-        Route::post('/staff/tables/move', [TableController::class, 'move']);
-        Route::post('/staff/tables/merge', [TableController::class, 'merge']);
-        Route::post('/staff/tables/unmerge', [TableController::class, 'unmerge']);
         Route::post('/tables/{number}/rotate', [TableController::class, 'rotate']);
 
-        // Inventory management & alerts
+        // Inventory management & alert resolution (Cashier excluded)
         Route::post('/staff/ingredients', [IngredientController::class, 'store']);
         Route::delete('/staff/ingredients/{ingredient}', [IngredientController::class, 'destroy']);
         Route::get('/staff/stock-alerts', [IngredientController::class, 'alerts']);

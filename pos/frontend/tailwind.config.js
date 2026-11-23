@@ -6,6 +6,7 @@ export default {
       fontFamily: {
         sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         display: ['"Outfit"', '"Plus Jakarta Sans"', 'sans-serif'],
+        logo: ['"Mellos"', '"Outfit"', 'cursive', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
       colors: {

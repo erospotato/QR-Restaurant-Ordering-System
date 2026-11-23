@@ -40,19 +40,51 @@ class TableController extends Controller
     // Customer table check
     public function show(string $token)
     {
-        $t = DiningTable::where('token', $token)->firstOrFail();
+        $t = DiningTable::where('token', $token)->first();
+        if (!$t) {
+            $settled = cache()->get("settled_token:{$token}");
+            if ($settled) {
+                return response()->json([
+                    'settled' => true,
+                    'table' => $settled['table_number'] ?? null,
+                    'settled_at' => $settled['settled_at'] ?? null,
+                    'message' => 'The bill for this table has been settled and this dining session is closed. Please rescan the table QR code to start a new order.',
+                ], 200);
+            }
+            abort(404, 'Invalid table QR token.');
+        }
+
         return [
             'table' => $t->number,
             'capacity' => $t->capacity,
             'status' => $t->status,
             'merged_with' => $t->merged_with,
+            'settled' => false,
         ];
+    }
+
+    // Customer scans table QR code (resolves to active dining session token)
+    public function scan(int $number)
+    {
+        $t = DiningTable::where('number', $number)->firstOrFail();
+        return response()->json([
+            'ok' => true,
+            'table' => $t->number,
+            'token' => $t->token,
+        ]);
     }
 
     // Customer active orders
     public function orders(string $token)
     {
-        $t = DiningTable::where('token', $token)->firstOrFail();
+        $t = DiningTable::where('token', $token)->first();
+        if (!$t) {
+            if (cache()->has("settled_token:{$token}")) {
+                return response()->json([]);
+            }
+            abort(404, 'Invalid table QR token.');
+        }
+
         return Order::with(['items', 'diningTable'])
             ->where('dining_table_id', $t->id)
             ->whereNull('paid_at')
@@ -164,7 +196,23 @@ class TableController extends Controller
                 'payment_method' => $method,
             ]);
 
-        $t->update(['status' => 'available', 'merged_with' => null]);
+        // Invalidate current table session token so customer cannot access or re-order
+        $oldToken = $t->token;
+        if ($oldToken) {
+            cache()->put("settled_token:{$oldToken}", [
+                'table_number' => $t->number,
+                'settled_at' => now()->toIso8601String(),
+            ], now()->addHours(48));
+        }
+
+        // Generate fresh secret token for next dining session
+        $newToken = Str::random(12);
+        $t->update([
+            'token' => $newToken,
+            'status' => 'available',
+            'merged_with' => null,
+        ]);
+
         // Also unmerge any auxiliary tables that were merged into this table
         DiningTable::where('merged_with', "Table {$number}")
             ->update(['merged_with' => null, 'status' => 'available']);
@@ -176,7 +224,16 @@ class TableController extends Controller
     // Rotate QR code token
     public function rotate(int $number)
     {
-        DiningTable::where('number', $number)->firstOrFail()->update(['token' => Str::random(12)]);
+        $t = DiningTable::where('number', $number)->firstOrFail();
+        $oldToken = $t->token;
+        if ($oldToken) {
+            cache()->put("settled_token:{$oldToken}", [
+                'table_number' => $t->number,
+                'settled_at' => now()->toIso8601String(),
+            ], now()->addHours(48));
+        }
+
+        $t->update(['token' => Str::random(12)]);
         PosUpdated::safeDispatch();
         return response()->json(['ok' => true]);
     }
@@ -184,7 +241,14 @@ class TableController extends Controller
     // Customer requests assistance (Call Waiter, Water, Bill, Cutlery)
     public function callService(Request $r, string $token)
     {
-        $table = DiningTable::where('token', $token)->firstOrFail();
+        $table = DiningTable::where('token', $token)->first();
+        if (!$table) {
+            if (cache()->has("settled_token:{$token}")) {
+                abort(403, 'This dining session is closed because the bill was settled. Please rescan the table QR code.');
+            }
+            abort(404, 'Invalid table QR token.');
+        }
+
         $type = $r->input('type', 'waiter');
         $notes = $r->input('notes');
 
