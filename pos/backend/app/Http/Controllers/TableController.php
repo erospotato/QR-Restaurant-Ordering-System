@@ -3,8 +3,12 @@ namespace App\Http\Controllers;
 
 use App\Events\PosUpdated;
 use App\Models\DiningTable;
+use App\Models\Member;
+use App\Models\MenuItem;
 use App\Models\Order;
+use App\Models\OrderItem;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class TableController extends Controller
@@ -13,7 +17,7 @@ class TableController extends Controller
     public function index(Request $r)
     {
         $user = $r->user();
-        $canSeeToken = in_array($user->role, ['admin', 'owner', 'manager']);
+        $canSeeToken = in_array($user->role, ['admin', 'owner', 'manager', 'cashier']);
 
         $tables = DiningTable::orderBy('number')->get();
         $unpaidOrders = Order::whereNull('paid_at')->get();
@@ -43,30 +47,57 @@ class TableController extends Controller
         $t = DiningTable::where('token', $token)->first();
         if (!$t) {
             $settled = cache()->get("settled_token:{$token}");
-            if ($settled) {
-                return response()->json([
-                    'settled' => true,
-                    'table' => $settled['table_number'] ?? null,
-                    'settled_at' => $settled['settled_at'] ?? null,
-                    'message' => 'The bill for this table has been settled and this dining session is closed. Please rescan the table QR code to start a new order.',
-                ], 200);
+            if ($settled && !empty($settled['table_number'])) {
+                $tableNum = (int) $settled['table_number'];
+                $activeTable = DiningTable::where('number', $tableNum)->first();
+                if ($activeTable) {
+                    if (empty($activeTable->token)) {
+                        $activeTable->update(['token' => Str::random(12)]);
+                    }
+                    return response()->json([
+                        'table' => $activeTable->number,
+                        'capacity' => $activeTable->capacity,
+                        'status' => $activeTable->status,
+                        'merged_with' => $activeTable->merged_with,
+                        'token' => $activeTable->token,
+                        'settled' => false,
+                        'redirect_token' => $activeTable->token,
+                    ]);
+                }
             }
             abort(404, 'Invalid table QR token.');
         }
 
-        return [
+        return response()->json([
             'table' => $t->number,
             'capacity' => $t->capacity,
             'status' => $t->status,
             'merged_with' => $t->merged_with,
+            'token' => $t->token,
             'settled' => false,
-        ];
+        ]);
     }
 
     // Customer scans table QR code (resolves to active dining session token)
-    public function scan(int $number)
+    public function scan($number)
     {
-        $t = DiningTable::where('number', $number)->firstOrFail();
+        $num = (int) $number;
+        if ($num <= 0) {
+            abort(404, 'Invalid table number.');
+        }
+
+        $t = DiningTable::where('number', $num)->first();
+        if (!$t) {
+            $t = DiningTable::create([
+                'number' => $num,
+                'capacity' => 4,
+                'token' => Str::random(12),
+                'status' => 'available',
+            ]);
+        } elseif (empty($t->token)) {
+            $t->update(['token' => Str::random(12)]);
+        }
+
         return response()->json([
             'ok' => true,
             'table' => $t->number,
@@ -79,10 +110,13 @@ class TableController extends Controller
     {
         $t = DiningTable::where('token', $token)->first();
         if (!$t) {
-            if (cache()->has("settled_token:{$token}")) {
-                return response()->json([]);
+            $settled = cache()->get("settled_token:{$token}");
+            if ($settled && !empty($settled['table_number'])) {
+                $t = DiningTable::where('number', (int) $settled['table_number'])->first();
             }
-            abort(404, 'Invalid table QR token.');
+        }
+        if (!$t) {
+            return response()->json([]);
         }
 
         return Order::with(['items', 'diningTable'])
@@ -178,9 +212,125 @@ class TableController extends Controller
         $r->validate(['number' => 'required|integer']);
         $table = DiningTable::where('number', $r->number)->firstOrFail();
         $table->update(['merged_with' => null]);
+        DiningTable::where('merged_with', "Table {$table->number}")->update(['merged_with' => null]);
 
         PosUpdated::safeDispatch();
         return response()->json(['ok' => true, 'message' => "Table {$table->number} unmerged."]);
+    }
+
+    // Cashier or Manager adds dishes to a table directly
+    public function addItem(Request $r, int $number)
+    {
+        $r->validate([
+            'items' => 'required|array|min:1',
+            'items.*.id' => 'required|integer',
+            'items.*.qty' => 'required|integer|min:1',
+            'items.*.notes' => 'nullable|string|max:255',
+            'order_notes' => 'nullable|string|max:255',
+        ]);
+
+        $table = DiningTable::where('number', $number)->firstOrFail();
+
+        DB::transaction(function () use ($r, $table) {
+            $order = Order::where('dining_table_id', $table->id)->whereNull('paid_at')->latest()->first();
+            $hasExisting = $order !== null;
+
+            if (!$order) {
+                $order = Order::create([
+                    'dining_table_id' => $table->id,
+                    'status' => 'new',
+                    'is_addon' => false,
+                    'notes' => $r->input('order_notes', 'Added at Cashier Station'),
+                ]);
+            }
+
+            foreach ($r->items as $i) {
+                $menuItem = MenuItem::where('is_available', true)->find($i['id']);
+                if (!$menuItem) continue;
+
+                $qty = (int) ($i['qty'] ?? 1);
+                $notes = !empty($i['notes']) ? trim($i['notes']) : null;
+
+                $existingItem = $order->items()
+                    ->where('menu_item_id', $menuItem->id)
+                    ->where('notes', $notes)
+                    ->first();
+
+                $itemPrice = ($menuItem->is_member_exclusive && $menuItem->promo_price !== null && $menuItem->promo_price > 0)
+                    ? (float) $menuItem->promo_price
+                    : (float) $menuItem->price;
+
+                if ($menuItem->is_member_exclusive && !str_contains($notes ?? '', 'Member Exclusive')) {
+                    $badgeText = $menuItem->promo_badge ?: 'Member Exclusive';
+                    $notes = "[{$badgeText}]" . ($notes ? " {$notes}" : '');
+                }
+
+                if ($existingItem) {
+                    $existingItem->increment('quantity', $qty);
+                } else {
+                    $order->items()->create([
+                        'menu_item_id' => $menuItem->id,
+                        'name' => $menuItem->name,
+                        'price' => $itemPrice,
+                        'quantity' => $qty,
+                        'notes' => $notes ? trim($notes) : null,
+                        'is_member_exclusive' => (bool) $menuItem->is_member_exclusive,
+                    ]);
+                }
+            }
+
+            $orderTotal = (float) $order->items()->sum(DB::raw('price * quantity'));
+            $order->update([
+                'total' => $orderTotal,
+                'is_addon' => $hasExisting,
+            ]);
+
+            $table->update(['status' => 'occupied']);
+        });
+
+        PosUpdated::safeDispatch();
+        return response()->json(['ok' => true]);
+    }
+
+    // Cashier or Manager removes/decrements an item from a table's unpaid order
+    public function removeItem(Request $r, int $number)
+    {
+        $r->validate([
+            'item_id' => 'required|integer',
+            'decrement_only' => 'nullable|boolean',
+        ]);
+
+        $table = DiningTable::where('number', $number)->firstOrFail();
+
+        DB::transaction(function () use ($r, $table) {
+            $item = OrderItem::whereHas('order', function ($q) use ($table) {
+                $q->where('dining_table_id', $table->id)->whereNull('paid_at');
+            })->findOrFail($r->item_id);
+
+            $order = $item->order;
+
+            if ($r->boolean('decrement_only') && $item->quantity > 1) {
+                $item->decrement('quantity', 1);
+            } else {
+                $item->delete();
+            }
+
+            $remainingCount = $order->items()->count();
+            if ($remainingCount === 0) {
+                $order->delete();
+            } else {
+                $orderTotal = (float) $order->items()->sum(DB::raw('price * quantity'));
+                $order->update(['total' => $orderTotal]);
+            }
+
+            $hasActiveOrders = Order::where('dining_table_id', $table->id)->whereNull('paid_at')->exists();
+            if (!$hasActiveOrders) {
+                $table->update(['status' => 'available']);
+            }
+        });
+
+        PosUpdated::safeDispatch();
+        return response()->json(['ok' => true]);
     }
 
     // Pay and close table (Cashier, Manager, Owner, Admin)
@@ -189,11 +339,82 @@ class TableController extends Controller
         $t = DiningTable::where('number', $number)->firstOrFail();
         $method = $r->input('payment_method', 'cash');
 
+        $unpaidOrders = Order::where('dining_table_id', $t->id)->whereNull('paid_at')->get();
+        if ($unpaidOrders->isEmpty()) {
+            abort(422, "Table #{$number} has no active orders to settle.");
+        }
+
+        $subtotal = (float) $unpaidOrders->sum('total');
+        $discountAmount = max(0, (float) $r->input('discount_amount', 0));
+        $tip = max(0, (float) $r->input('tip', 0));
+        $tax = max(0, (float) $r->input('tax', 0));
+        $finalTotal = max(0, round($subtotal - $discountAmount + $tip + $tax, 2));
+
+        $tendered = null;
+        $change = 0;
+
+        if ($method === 'cash') {
+            $tendered = (float) $r->input('amount_tendered', 0);
+            if ($tendered < $finalTotal) {
+                abort(422, "Cash amount given ($" . number_format($tendered, 2) . ") is less than total due ($" . number_format($finalTotal, 2) . "). Please enter the exact or greater amount.");
+            }
+            $change = max(0, round($tendered - $finalTotal, 2));
+        } else {
+            $tendered = $finalTotal;
+            $change = 0;
+        }
+
+        // Process Membership if customer is a member
+        $memberId = $r->input('member_id');
+        $memberPhone = $r->input('member_phone');
+        $member = null;
+
+        if ($memberId) {
+            $member = Member::find($memberId);
+        } elseif ($memberPhone) {
+            $cleanP = trim($memberPhone);
+            $member = Member::where('phone', $cleanP)->first();
+        }
+
+        $pointsEarned = 0;
+        $pointsRedeemed = max(0, (int) $r->input('points_redeemed', 0));
+
+        if ($member) {
+            // Points multiplier by tier
+            $multiplier = match (strtolower($member->tier)) {
+                'vip' => 2.0,
+                'gold' => 1.5,
+                'silver' => 1.2,
+                default => 1.0,
+            };
+            $pointsEarned = (int) round($finalTotal * $multiplier);
+
+            $newTotalSpent = (float) $member->total_spent + $finalTotal;
+            $newPoints = max(0, ($member->points - $pointsRedeemed) + $pointsEarned);
+            $newTier = Member::determineTier($newTotalSpent);
+
+            $member->update([
+                'total_spent' => $newTotalSpent,
+                'points' => $newPoints,
+                'tier' => $newTier,
+                'visits_count' => $member->visits_count + 1,
+            ]);
+        }
+
         Order::where('dining_table_id', $t->id)
             ->whereNull('paid_at')
             ->update([
                 'paid_at' => now(),
                 'payment_method' => $method,
+                'amount_tendered' => $tendered,
+                'change_due' => $change,
+                'tip' => $tip,
+                'tax' => $tax,
+                'discount_amount' => $discountAmount,
+                'customer_name' => $member ? "{$member->name} ({$member->phone})" : $r->input('customer_name'),
+                'member_id' => $member?->id,
+                'points_earned' => $pointsEarned,
+                'points_redeemed' => $pointsRedeemed,
             ]);
 
         // Invalidate current table session token so customer cannot access or re-order
@@ -218,7 +439,17 @@ class TableController extends Controller
             ->update(['merged_with' => null, 'status' => 'available']);
 
         PosUpdated::safeDispatch();
-        return response()->json(['ok' => true]);
+        return response()->json([
+            'ok' => true,
+            'table' => $number,
+            'amount_tendered' => $tendered,
+            'change_due' => $change,
+            'final_total' => $finalTotal,
+            'member' => $member ? array_merge($member->toApi(), [
+                'points_earned_this_visit' => $pointsEarned,
+                'points_redeemed_this_visit' => $pointsRedeemed,
+            ]) : null,
+        ]);
     }
 
     // Rotate QR code token
@@ -243,9 +474,12 @@ class TableController extends Controller
     {
         $table = DiningTable::where('token', $token)->first();
         if (!$table) {
-            if (cache()->has("settled_token:{$token}")) {
-                abort(403, 'This dining session is closed because the bill was settled. Please rescan the table QR code.');
+            $settled = cache()->get("settled_token:{$token}");
+            if ($settled && !empty($settled['table_number'])) {
+                $table = DiningTable::where('number', (int) $settled['table_number'])->first();
             }
+        }
+        if (!$table) {
             abort(404, 'Invalid table QR token.');
         }
 
@@ -262,6 +496,27 @@ class TableController extends Controller
 
         PosUpdated::safeDispatch();
         return response()->json(['ok' => true, 'message' => 'Staff has been notified and will assist you shortly.', 'request' => $req]);
+    }
+
+    // Network host discovery for mobile QR code scanning
+    public function networkInfo(Request $r)
+    {
+        $serverHost = $r->getHost();
+        $hostname = @gethostname() ?: 'localhost';
+        $hostIp = @gethostbyname($hostname) ?: '127.0.0.1';
+
+        // Known candidate LAN IPs
+        $candidateIps = ['172.20.10.2'];
+        if ($hostIp && !in_array($hostIp, ['127.0.0.1', '::1', '0.0.0.0'])) {
+            $candidateIps[] = $hostIp;
+        }
+
+        return response()->json([
+            'wifi_ip' => '172.20.10.2',
+            'ips' => array_values(array_unique($candidateIps)),
+            'server_host' => $serverHost,
+            'port' => 5173,
+        ]);
     }
 
     // Staff list of active service requests

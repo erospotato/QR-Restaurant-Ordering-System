@@ -1,7 +1,7 @@
 <?php
 namespace Database\Seeders;
 
-use App\Models\{DiningTable, Ingredient, MenuItem, StockAlert, User};
+use App\Models\{DiningTable, Ingredient, Member, MenuItem, StockAlert, User};
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -374,6 +374,234 @@ class DatabaseSeeder extends Seeder
                 'is_top_sale' => false,
                 'is_signature' => true,
             ],
+
+            // Additional Chef Specials & Dishes
+            [
+                'name' => 'Smoked BBQ Beef Brisket',
+                'description' => '14-hour hickory smoked prime beef brisket, tangy bourbon BBQ glaze, house pickles, and Texas toast.',
+                'price' => 24.50,
+                'category' => 'Mains',
+                'image_path' => 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => true,
+                'is_signature' => true,
+            ],
+            [
+                'name' => 'Pan-Roasted Chilean Sea Bass',
+                'description' => 'Miso-marinated Chilean sea bass, baby bok choy, ginger dashi reduction, and crispy leeks.',
+                'price' => 29.00,
+                'category' => 'Mains',
+                'image_path' => 'https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => false,
+                'is_signature' => true,
+            ],
+            [
+                'name' => 'Classic Beef Lasagna Bolognese',
+                'description' => 'Handmade pasta sheets layered with slow-simmered Angus beef ragù, silky béchamel, and melted parmigiano.',
+                'price' => 17.00,
+                'category' => 'Mains',
+                'image_path' => 'https://images.unsplash.com/photo-1574894709920-11b28e7367e3?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => true,
+                'is_signature' => false,
+            ],
+            [
+                'name' => 'Japanese Chicken Katsu Curry',
+                'description' => 'Panko-crusted crispy chicken cutlet, aromatic Japanese golden curry sauce, koshihikari rice, and fukujinzuke.',
+                'price' => 15.50,
+                'category' => 'Mains',
+                'image_path' => 'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => true,
+                'is_signature' => false,
+            ],
+            [
+                'name' => 'Ahi Tuna Poke Bowl',
+                'description' => 'Sashimi-grade yellowfin tuna, seasoned sushi rice, Hass avocado, edamame, wakame seaweed, and sesame ponzu.',
+                'price' => 16.50,
+                'category' => 'Mains',
+                'image_path' => 'https://images.unsplash.com/photo-1546069901-d72d242948c4?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => true,
+                'is_signature' => false,
+            ],
+            [
+                'name' => 'Lobster Ravioli in Saffron Cream',
+                'description' => 'Handmade pasta stuffed with sweet Maine lobster and ricotta, simmered in a saffron lemon cream emulsion.',
+                'price' => 23.50,
+                'category' => 'Mains',
+                'image_path' => 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => false,
+                'is_signature' => true,
+            ],
+            [
+                'name' => 'Crispy French Duck Confit',
+                'description' => 'Slow-cured duck leg with crispy golden skin, braised red cabbage, fingerling potatoes, and orange thyme jus.',
+                'price' => 22.50,
+                'category' => 'Mains',
+                'image_path' => 'https://images.unsplash.com/photo-1514944298352-73ec6005c210?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => false,
+                'is_signature' => false,
+            ],
+            [
+                'name' => 'Crispy Pork Belly Bao Buns (3 pcs)',
+                'description' => 'Steamed lotus leaf buns, twice-cooked crispy pork belly, hoisin reduction, pickled cucumber, and crushed peanuts.',
+                'price' => 12.00,
+                'category' => 'Starters',
+                'image_path' => 'https://images.unsplash.com/photo-1563245372-f21724e3856d?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => true,
+                'is_signature' => false,
+            ],
+            [
+                'name' => 'Garlic Butter Escargots (6 pcs)',
+                'description' => 'French Helix escargots baked in garlic parsley herb butter and white wine, served with warm crusty baguette.',
+                'price' => 11.50,
+                'category' => 'Starters',
+                'image_path' => 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => false,
+                'is_signature' => true,
+            ],
+            [
+                'name' => 'French Onion Soup Gratinée',
+                'description' => 'Caramelized yellow onions in rich beef bone broth, toasted baguette, and bubbling melted aged Gruyère cheese.',
+                'price' => 8.50,
+                'category' => 'Starters',
+                'image_path' => 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => false,
+                'is_signature' => false,
+            ],
+            [
+                'name' => 'Matcha Basque Burnt Cheesecake',
+                'description' => 'Caramelized Basque cheesecake infused with pure Kyoto Uji matcha, creamy molten center, and chantilly cream.',
+                'price' => 9.50,
+                'category' => 'Desserts',
+                'image_path' => 'https://images.unsplash.com/photo-1565958011703-44f9829ba187?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => false,
+                'is_signature' => true,
+            ],
+            [
+                'name' => 'Belgian Waffle with Fresh Berries',
+                'description' => 'Golden caramelized pearl sugar waffle topped with fresh organic raspberries, blueberries, and vanilla bean gelato.',
+                'price' => 8.50,
+                'category' => 'Desserts',
+                'image_path' => 'https://images.unsplash.com/photo-1562376552-0d160a2f238d?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => true,
+                'is_signature' => false,
+            ],
+
+            // Additional Signature Drinks & Mocktails
+            [
+                'name' => 'Smoked Old Fashioned',
+                'description' => 'Kentucky small batch bourbon, aromatic Angostura bitters, raw demerara sugar, flamed orange peel, and oakwood smoke.',
+                'price' => 12.00,
+                'category' => 'Drinks',
+                'image_path' => 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => false,
+                'is_signature' => true,
+            ],
+            [
+                'name' => 'Yuzu Citrus Blossom Mocktail',
+                'description' => 'Japanese yuzu juice, elderflower cordial, sparkling tonic water, fresh thyme sprig, and dehydrated lime wheel.',
+                'price' => 6.00,
+                'category' => 'Drinks',
+                'image_path' => 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => true,
+                'is_signature' => false,
+            ],
+            [
+                'name' => 'Dragonfruit Mango Smoothie',
+                'description' => 'Blended magenta dragonfruit, sweet Alphonso mango, organic coconut yogurt, chia seeds, and raw agave nectar.',
+                'price' => 6.50,
+                'category' => 'Drinks',
+                'image_path' => 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => true,
+                'is_signature' => false,
+            ],
+            [
+                'name' => 'Spanish Iced Cortado',
+                'description' => 'Equal parts double shot espresso ristretto and silky steamed condensed milk poured over hand-carved ice.',
+                'price' => 4.50,
+                'category' => 'Drinks',
+                'image_path' => 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => false,
+                'is_signature' => false,
+            ],
+            [
+                'name' => 'Fresh Watermelon Basil Cooler',
+                'description' => 'Cold-pressed sweet watermelon juice, muddled Thai sweet basil leaves, freshly squeezed lime, and pink Himalayan sea salt.',
+                'price' => 5.00,
+                'category' => 'Drinks',
+                'image_path' => 'https://images.unsplash.com/photo-1563227812-0ea4c22e6cc8?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => false,
+                'is_signature' => false,
+            ],
+            [
+                'name' => 'Butterfly Pea Lavender Lemonade',
+                'description' => 'Natural blue butterfly pea flower tea, French lavender syrup, fresh lemon juice, layered over crystal ice.',
+                'price' => 5.50,
+                'category' => 'Drinks',
+                'image_path' => 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => false,
+                'is_signature' => true,
+            ],
+            [
+                'name' => 'Classic Italian Aperol Spritz',
+                'description' => 'Aperol, chilled Prosecco DOC, splash of sparkling soda water, and fresh orange wedge over ice.',
+                'price' => 11.00,
+                'category' => 'Drinks',
+                'image_path' => 'https://images.unsplash.com/photo-1560512823-829485b8bf24?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => false,
+                'is_signature' => false,
+            ],
+            [
+                'name' => 'Japanese Genmaicha Green Tea (Pot)',
+                'description' => 'Premium roasted brown rice green tea served hot in a traditional cast-iron teapot, soothing and nutty.',
+                'price' => 4.00,
+                'category' => 'Drinks',
+                'image_path' => 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => false,
+                'is_signature' => false,
+            ],
+            [
+                'name' => 'Salted Cheese Foam Boba Milk Tea',
+                'description' => 'Slow-brewed Assam black milk tea with chewy brown sugar tapioca pearls, capped with velvety savory cream cheese foam.',
+                'price' => 6.00,
+                'category' => 'Drinks',
+                'image_path' => 'https://images.unsplash.com/photo-1558857563-b37d45c5836c?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => true,
+                'is_signature' => false,
+            ],
+            [
+                'name' => 'Virgin Mojito Lime Freeze',
+                'description' => 'Crushed garden mint, raw organic cane sugar, fresh Persian lime juice, and sparkling soda over crushed ice.',
+                'price' => 4.50,
+                'category' => 'Drinks',
+                'image_path' => 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => false,
+                'is_signature' => false,
+            ],
+            [
+                'name' => 'Maison Royale Truffle Filet Mignon',
+                'description' => 'Grade A5 tenderloin medallion basted in rosemary bone marrow butter, shaved Périgord black winter truffles, and potato mousseline. Exclusively reserved for MOLS MAISON members.',
+                'price' => 42.00,
+                'promo_price' => 29.50,
+                'category' => 'Mains',
+                'image_path' => 'https://images.unsplash.com/photo-1544025162-d76694265947?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => true,
+                'is_signature' => true,
+                'is_member_exclusive' => true,
+                'min_member_tier' => 'Bronze',
+                'promo_badge' => '✦ MEMBER EXCLUSIVE 30% OFF',
+            ],
+            [
+                'name' => 'Golden Dragonfruit Lychee Sparkler',
+                'description' => 'Cold-pressed yellow dragonfruit elixir infused with sweet lychee nectar, clarified yuzu, and sparkling artisanal tonic. Exclusive VIP welcome drink.',
+                'price' => 8.50,
+                'promo_price' => 5.50,
+                'category' => 'Drinks',
+                'image_path' => 'https://images.unsplash.com/photo-1536935338788-846bb9981813?w=600&auto=format&fit=crop&q=80',
+                'is_top_sale' => false,
+                'is_signature' => true,
+                'is_member_exclusive' => true,
+                'min_member_tier' => 'Bronze',
+                'promo_badge' => '✦ VIP SPECIAL',
+            ],
         ];
 
         foreach ($items as $it) {
@@ -402,18 +630,92 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Valencia Oranges', 'quantity' => 25.0, 'unit' => 'kg', 'min_threshold' => 10.0, 'cost_per_unit' => 2.20],
         ];
 
-        foreach ($ingredients as $ing) {
-            $created = Ingredient::updateOrCreate(['name' => $ing['name']], $ing);
-            if ($created->quantity <= $created->min_threshold) {
-                StockAlert::firstOrCreate(
-                    ['ingredient_id' => $created->id, 'is_resolved' => false],
-                    [
-                        'ingredient_name' => $created->name,
-                        'message' => "Stock is low: {$created->quantity} {$created->unit} remaining (minimum threshold: {$created->min_threshold} {$created->unit})",
-                        'reported_by' => 'System Inventory Alert',
-                    ]
-                );
-            }
+        // 5. VIP & Loyalty Members for MOLS MAISON
+        $sampleMembers = [
+            [
+                'name' => 'Alexander Vance',
+                'phone' => '081299887766',
+                'email' => 'alex.vance@mols.com',
+                'tier' => 'vip',
+                'points' => 480,
+                'total_spent' => 950.00,
+                'visits_count' => 18,
+                'notes' => 'Prefers Corner Table #8. Regular wine collector.',
+            ],
+            [
+                'name' => 'Eleanor Dupont',
+                'phone' => '081122334455',
+                'email' => 'eleanor.d@monaco.mc',
+                'tier' => 'vip',
+                'points' => 360,
+                'total_spent' => 720.50,
+                'visits_count' => 12,
+                'notes' => 'Celebrated anniversary here. Loves the Wagyu Ribeye.',
+            ],
+            [
+                'name' => 'Marcus Sterling',
+                'phone' => '081344556677',
+                'email' => 'marcus.s@luxury.com',
+                'tier' => 'gold',
+                'points' => 190,
+                'total_spent' => 420.00,
+                'visits_count' => 7,
+                'notes' => 'Frequent business lunch patron.',
+            ],
+            [
+                'name' => 'Sophie Moreau',
+                'phone' => '081288776655',
+                'email' => 'sophie.moreau@art.fr',
+                'tier' => 'gold',
+                'points' => 160,
+                'total_spent' => 350.00,
+                'visits_count' => 6,
+                'notes' => 'Enjoys desserts & cocktails.',
+            ],
+            [
+                'name' => 'David Chen',
+                'phone' => '081566778899',
+                'email' => 'david.chen@tech.io',
+                'tier' => 'silver',
+                'points' => 95,
+                'total_spent' => 185.00,
+                'visits_count' => 4,
+                'notes' => 'Table #3 regular.',
+            ],
+            [
+                'name' => 'Clara Rossi',
+                'phone' => '081733445566',
+                'email' => 'clara.rossi@design.it',
+                'tier' => 'silver',
+                'points' => 70,
+                'total_spent' => 140.00,
+                'visits_count' => 3,
+                'notes' => 'Joined during summer dining festival.',
+            ],
+            [
+                'name' => 'James Wilson',
+                'phone' => '081911223344',
+                'email' => 'james.w@outlook.com',
+                'tier' => 'bronze',
+                'points' => 50,
+                'total_spent' => 65.00,
+                'visits_count' => 2,
+                'notes' => null,
+            ],
+            [
+                'name' => 'Olivia Taylor',
+                'phone' => '081822334455',
+                'email' => 'olivia.t@gmail.com',
+                'tier' => 'bronze',
+                'points' => 50,
+                'total_spent' => 0.00,
+                'visits_count' => 1,
+                'notes' => 'Newly registered member.',
+            ],
+        ];
+
+        foreach ($sampleMembers as $m) {
+            Member::updateOrCreate(['phone' => $m['phone']], $m);
         }
     }
 }

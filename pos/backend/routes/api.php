@@ -1,17 +1,23 @@
 <?php
-use App\Http\Controllers\{AuthController, IngredientController, MenuController, OrderController, StaffUserController, TableController};
+use App\Http\Controllers\{AuthController, IngredientController, MemberController, MenuController, OrderController, StaffUserController, TableController};
 use App\Http\Middleware\EnsureRole;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
 // Public (customers)
-Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:20,1');
+Route::post('/login', [AuthController::class, 'login'])->name('login')->middleware('throttle:20,1');
 Route::get('/menu', [MenuController::class, 'index']);
 Route::get('/tables/scan/{number}', [TableController::class, 'scan']);
 Route::get('/tables/{token}', [TableController::class, 'show']);
 Route::get('/tables/{token}/orders', [TableController::class, 'orders']);
 Route::post('/tables/{token}/call-waiter', [TableController::class, 'callService']);
 Route::post('/orders', [OrderController::class, 'store']);
+Route::get('/network-info', [TableController::class, 'networkInfo']);
+
+// Public Customer Loyalty & Membership Lookup / Registration
+Route::get('/members/lookup', [MemberController::class, 'lookup']);
+Route::post('/members/register', [MemberController::class, 'register']);
+Route::get('/members/{phone}', [MemberController::class, 'lookup']);
 
 // Websocket auth for private "staff" channel
 Broadcast::routes(['middleware' => ['auth:sanctum']]);
@@ -37,26 +43,35 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/staff/ingredients/{ingredient}/notify-low', [IngredientController::class, 'notifyLow']);
     });
 
-    // Cashier + Manager (and Owner + Admin) - Billing & Table Party Merging/Unmerging
+    // Cashier + Manager (and Owner + Admin) - Billing, Table Management & Order Editing
     Route::middleware(EnsureRole::class . ':cashier,manager')->group(function () {
+        Route::get('/staff/menu', [MenuController::class, 'all']);
         Route::post('/tables/{number}/pay', [TableController::class, 'pay']);
+        Route::post('/staff/tables/{number}/add-items', [TableController::class, 'addItem']);
+        Route::post('/staff/tables/{number}/remove-item', [TableController::class, 'removeItem']);
         Route::post('/staff/tables/move', [TableController::class, 'move']);
         Route::post('/staff/tables/merge', [TableController::class, 'merge']);
         Route::post('/staff/tables/unmerge', [TableController::class, 'unmerge']);
+        Route::post('/tables/{number}/rotate', [TableController::class, 'rotate']);
+
+        // VIP Customers & Membership Management (Owner, Manager, Admin, Cashier)
+        Route::get('/staff/members', [MemberController::class, 'index']);
+        Route::get('/staff/members/search', [MemberController::class, 'search']);
+        Route::get('/staff/members/lookup', [MemberController::class, 'lookup']);
+        Route::get('/staff/members/{id}', [MemberController::class, 'show']);
+        Route::post('/staff/members', [MemberController::class, 'register']);
     });
 
-    // Manager (and Owner + Admin): Table management, Menu, Inventory Admin & Sales
+    // Manager (and Owner + Admin): Table creation, Menu Admin, Inventory Admin & Sales
     Route::middleware(EnsureRole::class . ':manager')->group(function () {
-        // Menu management
-        Route::get('/staff/menu', [MenuController::class, 'all']);
+        // Menu modification
         Route::post('/menu', [MenuController::class, 'store']);
         Route::patch('/menu/{item}', [MenuController::class, 'update']);
         Route::delete('/menu/{item}', [MenuController::class, 'destroy']);
 
-        // Table creation, removal & placard token rotation
+        // Table creation & removal
         Route::post('/staff/tables', [TableController::class, 'store']);
         Route::delete('/staff/tables/{number}', [TableController::class, 'destroy']);
-        Route::post('/tables/{number}/rotate', [TableController::class, 'rotate']);
 
         // Inventory management & alert resolution (Cashier excluded)
         Route::post('/staff/ingredients', [IngredientController::class, 'store']);
@@ -68,8 +83,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/staff/sales', [OrderController::class, 'sales']);
     });
 
-    // Admin & Owner only: Staff user accounts management
-    Route::middleware(EnsureRole::class . ':admin,owner')->group(function () {
+    // Manager, Admin & Owner: Staff user accounts management (CRUD)
+    Route::middleware(EnsureRole::class . ':admin,owner,manager')->group(function () {
         Route::get('/staff/users', [StaffUserController::class, 'index']);
         Route::post('/staff/users', [StaffUserController::class, 'store']);
         Route::patch('/staff/users/{user}', [StaffUserController::class, 'update']);

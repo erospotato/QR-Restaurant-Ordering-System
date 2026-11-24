@@ -97,7 +97,9 @@ export async function api(path, { method = 'GET', body, form } = {}) {
   if (method === 'PATCH' || method === 'PUT' || method === 'DELETE') {
     headers['X-HTTP-Method-Override'] = method
   }
-  const r = await fetch('/api' + path, { method: reqMethod, headers, body: payload })
+  const cleanPath = path.startsWith('/api/') ? path.substring(4) : path
+  const normalizedPath = cleanPath.startsWith('/') ? cleanPath : '/' + cleanPath
+  const r = await fetch('/api' + normalizedPath, { method: reqMethod, headers, body: payload })
   if (r.status === 401 && t && path !== '/login') {
     setToken(null)
     location.reload()

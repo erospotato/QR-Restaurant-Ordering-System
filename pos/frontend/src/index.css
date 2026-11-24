@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -57,28 +58,48 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+  .thin-scrollbar::-webkit-scrollbar {
+    height: 4px;
+    width: 4px;
+  }
+  .thin-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb {
+    background: #e7e5e4;
+    border-radius: 9999px;
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #d6d3d1;
+  }
+  .thin-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #e7e5e4 transparent;
+  }
 }
 
-/* Custom thermal receipt styling */
+/* Custom thermal receipt & general print styling */
 @media print {
   body * {
     visibility: hidden;
   }
-  #printable-receipt, #printable-receipt * {
+
+  #printable-receipt,
+  #printable-receipt * {
     visibility: visible;
   }
+
   #printable-receipt {
     position: absolute;
     left: 0;
     top: 0;
-    width: 80mm;
-    margin: 0 auto;
-    padding: 10px;
-    background: #fff;
-    color: #000;
-    font-family: 'JetBrains Mono', monospace;
+    width: 72mm;
+    color: black;
+    background: white;
   }
-  .print-hide {
-    display: none !important;
+
+  @page {
+    size: 80mm auto;
+    margin: 4mm;
   }
 }

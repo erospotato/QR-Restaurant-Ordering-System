@@ -3,6 +3,7 @@ namespace App\Http\Controllers;
 
 use App\Events\PosUpdated;
 use App\Models\DiningTable;
+use App\Models\Member;
 use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -19,6 +20,8 @@ class OrderController extends Controller
         $r->validate([
             'token' => 'required|string',
             'notes' => 'nullable|string|max:500',
+            'member_phone' => 'nullable|string|max:30',
+            'member_id' => 'nullable|integer',
             'items' => 'required|array|min:1|max:50',
             'items.*.id' => 'required|integer',
             'items.*.qty' => 'required|integer|min:1|max:30',
@@ -27,33 +30,78 @@ class OrderController extends Controller
 
         $table = DiningTable::where('token', $r->token)->first();
         if (!$table) {
-            if (cache()->has("settled_token:{$r->token}")) {
-                abort(403, 'This table session has ended because the bill was settled. Please rescan the table QR code to start a new order.');
+            $settled = cache()->get("settled_token:{$r->token}");
+            if ($settled && !empty($settled['table_number'])) {
+                $table = DiningTable::where('number', (int) $settled['table_number'])->first();
             }
-            abort(404, 'Invalid table QR token.');
+        }
+        if (!$table) {
+            abort(404, 'Invalid table QR token. Please scan the QR code on your table.');
         }
         abort_unless(RateLimiter::attempt('order:' . $table->id, 10, fn () => true, 60), 429, 'Too many orders, please wait a moment.');
 
-        DB::transaction(function () use ($r, $table) {
+        // Verify member if provided
+        $member = null;
+        if ($r->filled('member_id')) {
+            $member = Member::find($r->input('member_id'));
+        }
+        if (!$member && $r->filled('member_phone')) {
+            $cleanPhone = preg_replace('/\s+/', '', $r->input('member_phone'));
+            $member = Member::where('phone', $cleanPhone)->first();
+        }
+
+        DB::transaction(function () use ($r, $table, $member) {
             $hasUnpaid = Order::where('dining_table_id', $table->id)->whereNull('paid_at')->exists();
             $order = Order::create([
                 'dining_table_id' => $table->id,
                 'is_addon' => $hasUnpaid,
                 'notes' => $r->input('notes'),
+                'customer_name' => $member ? "{$member->name} ({$member->phone})" : null,
             ]);
 
+            $tierLevels = ['Bronze' => 1, 'Silver' => 2, 'Gold' => 3, 'VIP' => 4];
             $total = 0;
             foreach ($r->items as $i) {
                 $m = MenuItem::where('is_available', true)->find($i['id']);
                 if (!$m) continue;
+
+                // Enforce Member Exclusivity
+                if ($m->is_member_exclusive) {
+                    abort_unless(
+                        $member,
+                        403,
+                        "Item '{$m->name}' is reserved exclusively for MOLS MAISON members. Please enter or register your membership phone number to order this item."
+                    );
+                    $minTier = $m->min_member_tier ?: 'Bronze';
+                    $userTierLevel = $tierLevels[$member->tier] ?? 1;
+                    $reqTierLevel = $tierLevels[$minTier] ?? 1;
+                    abort_if(
+                        $userTierLevel < $reqTierLevel,
+                        403,
+                        "Item '{$m->name}' is a {$minTier} tier exclusive promotion. Your current tier is {$member->tier}."
+                    );
+                }
+
+                // If member promotional price is configured, give the member discounted price
+                $unitPrice = ($m->is_member_exclusive && $m->promo_price !== null && $m->promo_price > 0)
+                    ? (float) $m->promo_price
+                    : (float) $m->price;
+
+                $itemNotes = $i['notes'] ?? null;
+                if ($m->is_member_exclusive) {
+                    $badgeText = $m->promo_badge ?: 'Member Exclusive';
+                    $itemNotes = "[{$badgeText}]" . ($itemNotes ? " {$itemNotes}" : '');
+                }
+
                 $order->items()->create([
                     'menu_item_id' => $m->id,
                     'name' => $m->name,
-                    'price' => $m->price,
+                    'price' => $unitPrice,
                     'quantity' => $i['qty'],
-                    'notes' => $i['notes'] ?? null,
+                    'notes' => $itemNotes ? trim($itemNotes) : null,
+                    'is_member_exclusive' => (bool) $m->is_member_exclusive,
                 ]);
-                $total += $m->price * $i['qty'];
+                $total += $unitPrice * $i['qty'];
             }
 
             abort_if($total == 0, 422, 'No valid items found in order');

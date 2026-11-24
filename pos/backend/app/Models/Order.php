@@ -25,6 +25,7 @@ class Order extends Model
             'addon' => $this->is_addon,
             'total' => (float) $this->total,
             'notes' => $this->notes,
+            'customer_name' => $this->customer_name,
             'payment_method' => $this->payment_method,
             'paid_at' => $this->paid_at ? $this->paid_at->toIso8601String() : null,
             'ts' => $this->created_at ? $this->created_at->timestamp * 1000 : 0,
@@ -35,6 +36,7 @@ class Order extends Model
                 'price' => (float) $i->price,
                 'qty' => (int) $i->quantity,
                 'notes' => $i->notes,
+                'is_member_exclusive' => (bool) $i->is_member_exclusive,
             ])->all(),
         ];
     }

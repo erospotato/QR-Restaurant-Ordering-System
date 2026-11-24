@@ -10,9 +10,11 @@ class MenuItem extends Model
     protected $guarded = [];
     protected $casts = [
         'price' => 'float',
+        'promo_price' => 'float',
         'is_available' => 'boolean',
         'is_top_sale' => 'boolean',
         'is_signature' => 'boolean',
+        'is_member_exclusive' => 'boolean',
     ];
     protected $appends = ['image_url'];
 

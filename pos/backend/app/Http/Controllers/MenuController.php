@@ -12,7 +12,10 @@ class MenuController extends Controller
     // Public menu for customers (with search & filtering)
     public function index(Request $r)
     {
-        $q = MenuItem::where('is_available', true);
+        $q = MenuItem::where('is_available', true)
+            ->whereNotNull('image_path')
+            ->where('image_path', '!=', '')
+            ->where('image_path', '!=', 'null');
 
         if ($search = $r->query('search')) {
             $q->where(function ($query) use ($search) {
@@ -26,12 +29,18 @@ class MenuController extends Controller
                 $q->where('is_top_sale', true);
             } elseif ($category === 'signature') {
                 $q->where('is_signature', true);
+            } elseif ($category === 'promo' || $category === 'member_promo' || $category === 'exclusive') {
+                $q->where('is_member_exclusive', true);
             } elseif ($category !== 'all') {
                 $q->where('category', $category);
             }
         }
 
-        return $q->orderBy('category')->orderBy('name')->get();
+        if ($r->boolean('member_exclusive')) {
+            $q->where('is_member_exclusive', true);
+        }
+
+        return $q->orderBy('is_member_exclusive', 'desc')->orderBy('category')->orderBy('name')->get();
     }
 
     // Staff menu with all filters (all items including unavailable)
@@ -61,9 +70,10 @@ class MenuController extends Controller
         if ($tag = $r->query('tag')) {
             if ($tag === 'top_sale') $q->where('is_top_sale', true);
             if ($tag === 'signature') $q->where('is_signature', true);
+            if ($tag === 'member_exclusive' || $tag === 'promo') $q->where('is_member_exclusive', true);
         }
 
-        return $q->orderBy('category')->orderBy('name')->get();
+        return $q->orderBy('is_member_exclusive', 'desc')->orderBy('category')->orderBy('name')->get();
     }
 
     public function store(Request $r)
@@ -71,6 +81,7 @@ class MenuController extends Controller
         $d = $r->validate([
             'name' => 'required|string|max:80',
             'price' => 'required|numeric|min:0|max:10000',
+            'promo_price' => 'nullable|numeric|min:0|max:10000',
             'category' => 'nullable|string|max:40',
             'description' => 'nullable|string|max:500',
             'image' => 'nullable|image|max:5120',
@@ -78,6 +89,9 @@ class MenuController extends Controller
             'is_available' => 'nullable|boolean',
             'is_top_sale' => 'nullable|boolean',
             'is_signature' => 'nullable|boolean',
+            'is_member_exclusive' => 'nullable|boolean',
+            'min_member_tier' => 'nullable|string|max:30',
+            'promo_badge' => 'nullable|string|max:60',
         ]);
 
         unset($d['image']);
@@ -93,6 +107,10 @@ class MenuController extends Controller
         $d['is_available'] = $r->boolean('is_available', true);
         $d['is_top_sale'] = $r->boolean('is_top_sale', false);
         $d['is_signature'] = $r->boolean('is_signature', false);
+        $d['is_member_exclusive'] = $r->boolean('is_member_exclusive', false);
+        $d['promo_price'] = $r->filled('promo_price') ? (float) $r->input('promo_price') : null;
+        $d['min_member_tier'] = $r->input('min_member_tier') ?: 'Bronze';
+        $d['promo_badge'] = $r->input('promo_badge') ?: 'MEMBER EXCLUSIVE';
 
         $item = MenuItem::create($d);
         PosUpdated::safeDispatch();
@@ -105,6 +123,7 @@ class MenuController extends Controller
         $d = $r->validate([
             'name' => 'sometimes|string|max:80',
             'price' => 'sometimes|numeric|min:0|max:10000',
+            'promo_price' => 'nullable|numeric|min:0|max:10000',
             'category' => 'sometimes|string|max:40',
             'description' => 'nullable|string|max:500',
             'image' => 'nullable|image|max:5120',
@@ -112,6 +131,9 @@ class MenuController extends Controller
             'is_available' => 'sometimes|boolean',
             'is_top_sale' => 'sometimes|boolean',
             'is_signature' => 'sometimes|boolean',
+            'is_member_exclusive' => 'sometimes|boolean',
+            'min_member_tier' => 'nullable|string|max:30',
+            'promo_badge' => 'nullable|string|max:60',
         ]);
 
         unset($d['image']);
@@ -124,6 +146,19 @@ class MenuController extends Controller
             $d['image_path'] = $r->file('image')->store('menu', config('pos.disk', 'public'));
         } elseif ($r->has('image_url') && $r->filled('image_url')) {
             $d['image_path'] = $r->input('image_url');
+        }
+
+        if ($r->has('is_member_exclusive')) {
+            $d['is_member_exclusive'] = $r->boolean('is_member_exclusive');
+        }
+        if ($r->has('promo_price')) {
+            $d['promo_price'] = $r->filled('promo_price') ? (float) $r->input('promo_price') : null;
+        }
+        if ($r->has('min_member_tier')) {
+            $d['min_member_tier'] = $r->input('min_member_tier') ?: 'Bronze';
+        }
+        if ($r->has('promo_badge')) {
+            $d['promo_badge'] = $r->input('promo_badge') ?: 'MEMBER EXCLUSIVE';
         }
 
         $item->update($d);

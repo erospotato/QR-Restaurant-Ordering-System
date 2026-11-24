@@ -3,8 +3,23 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import './index.css'
 import { api } from './lib'
+import { AuthProvider } from './context/AuthContext'
+import { DialogProvider } from './context/DialogContext'
+import ProtectedRoute from './components/ProtectedRoute'
+import StaffLayout from './components/StaffLayout'
 import Customer from './pages/Customer'
 import Staff from './pages/Staff'
+import Login from './pages/Login'
+import Kitchen from './pages/Kitchen'
+import Cashier from './pages/Cashier'
+import Manager from './pages/Manager'
+import TablePage from './pages/TablePage'
+import MenuPage from './pages/MenuPage'
+import InventoryPage from './pages/InventoryPage'
+import QrPage from './pages/QrPage'
+import UsersPage from './pages/UsersPage'
+import MembersPage from './pages/MembersPage'
+import logo from './assets/imgs/logo.jpg'
 
 function ScanRedirect() {
   const { tableNumber } = useParams()
@@ -60,8 +75,8 @@ function ScanRedirect() {
   return (
     <div className="grid min-h-screen place-items-center bg-warm-100 p-6 text-center font-sans">
       <div className="max-w-sm rounded-3xl bg-white p-8 shadow-card border border-warm-200">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-warm-900 text-brand-300 animate-pulse">
-          <span className="font-logo text-xl">MR</span>
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-white border border-warm-200/90 p-2 shadow-xs overflow-hidden animate-pulse">
+          <img src={logo} alt="MOLS MAISON" className="h-full w-full object-contain rounded-2xl" />
         </div>
         <h2 className="mt-4 font-display text-lg font-bold text-warm-900">Connecting to Table #{tableNumber}...</h2>
         <p className="mt-1 text-xs text-warm-500 font-mono">Opening fresh dining session</p>
@@ -75,12 +90,156 @@ function ScanRedirect() {
 
 createRoot(document.getElementById('root')).render(
   <BrowserRouter>
-    <Routes>
-      <Route path="/t/:token" element={<Customer />} />
-      <Route path="/scan/:tableNumber" element={<ScanRedirect />} />
-      <Route path="/table/:tableNumber" element={<ScanRedirect />} />
-      <Route path="/staff" element={<Staff />} />
-      <Route path="*" element={<Navigate to="/staff" replace />} />
-    </Routes>
-  </BrowserRouter>
+    <DialogProvider>
+      <AuthProvider>
+      <Routes>
+        {/* Customer Dining Experience */}
+        <Route path="/t/:token" element={<Customer />} />
+        <Route path="/scan/:tableNumber" element={<ScanRedirect />} />
+        <Route path="/table/:tableNumber" element={<ScanRedirect />} />
+
+        {/* Public Login Route (Always accessible, presets for all roles) */}
+        <Route path="/login" element={<Login />} />
+
+        {/* Staff Layout: Shared Navbar, Chime Audio, Service Alerts & Data Outlet */}
+        <Route element={<StaffLayout />}>
+          <Route
+            path="/manager"
+            element={
+              <ProtectedRoute allowedRoles={['manager', 'owner', 'admin']}>
+                <Manager />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={['manager', 'owner', 'admin']}>
+                <Manager />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute allowedRoles={['manager', 'owner', 'admin']}>
+                <Manager />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/kitchen"
+            element={
+              <ProtectedRoute allowedRoles={['kitchen', 'manager', 'owner', 'admin']}>
+                <Kitchen />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/kds"
+            element={
+              <ProtectedRoute allowedRoles={['kitchen', 'manager', 'owner', 'admin']}>
+                <Kitchen />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/cashier"
+            element={
+              <ProtectedRoute allowedRoles={['cashier', 'manager', 'owner', 'admin']}>
+                <Cashier />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/pos"
+            element={
+              <ProtectedRoute allowedRoles={['cashier', 'manager', 'owner', 'admin']}>
+                <Cashier />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/tables"
+            element={
+              <ProtectedRoute allowedRoles={['cashier', 'manager', 'owner', 'admin']}>
+                <TablePage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/menu"
+            element={
+              <ProtectedRoute allowedRoles={['manager', 'owner', 'admin']}>
+                <MenuPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/inventory"
+            element={
+              <ProtectedRoute allowedRoles={['kitchen', 'manager', 'owner', 'admin']}>
+                <InventoryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/stocks"
+            element={
+              <ProtectedRoute allowedRoles={['kitchen', 'manager', 'owner', 'admin']}>
+                <InventoryPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/qr"
+            element={
+              <ProtectedRoute allowedRoles={['cashier', 'manager', 'owner', 'admin']}>
+                <QrPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/users"
+            element={
+              <ProtectedRoute allowedRoles={['manager', 'owner', 'admin']}>
+                <UsersPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* VIP Customers & Membership Directory (Owner, Manager, Admin, Cashier) */}
+          <Route
+            path="/members"
+            element={
+              <ProtectedRoute allowedRoles={['cashier', 'manager', 'owner', 'admin']}>
+                <MembersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/vip"
+            element={
+              <ProtectedRoute allowedRoles={['cashier', 'manager', 'owner', 'admin']}>
+                <MembersPage />
+              </ProtectedRoute>
+            }
+          />
+        </Route>
+
+        {/* Staff Hub Entry Point */}
+        <Route path="/staff" element={<Staff />} />
+        <Route path="/" element={<Staff />} />
+        <Route path="*" element={<Navigate to="/staff" replace />} />
+      </Routes>
+    </AuthProvider>
+  </DialogProvider>
+</BrowserRouter>
 )
