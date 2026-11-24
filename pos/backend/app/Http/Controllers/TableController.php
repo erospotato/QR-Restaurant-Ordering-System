@@ -48,22 +48,11 @@ class TableController extends Controller
         if (!$t) {
             $settled = cache()->get("settled_token:{$token}");
             if ($settled && !empty($settled['table_number'])) {
-                $tableNum = (int) $settled['table_number'];
-                $activeTable = DiningTable::where('number', $tableNum)->first();
-                if ($activeTable) {
-                    if (empty($activeTable->token)) {
-                        $activeTable->update(['token' => Str::random(12)]);
-                    }
-                    return response()->json([
-                        'table' => $activeTable->number,
-                        'capacity' => $activeTable->capacity,
-                        'status' => $activeTable->status,
-                        'merged_with' => $activeTable->merged_with,
-                        'token' => $activeTable->token,
-                        'settled' => false,
-                        'redirect_token' => $activeTable->token,
-                    ]);
-                }
+                return response()->json([
+                    'table' => (int) $settled['table_number'],
+                    'settled' => true,
+                    'message' => 'This dining session has ended and the bill has been settled. Please scan the QR code on your table to start a new session.',
+                ], 403);
             }
             abort(404, 'Invalid table QR token.');
         }
@@ -111,11 +100,12 @@ class TableController extends Controller
         $t = DiningTable::where('token', $token)->first();
         if (!$t) {
             $settled = cache()->get("settled_token:{$token}");
-            if ($settled && !empty($settled['table_number'])) {
-                $t = DiningTable::where('number', (int) $settled['table_number'])->first();
+            if ($settled) {
+                return response()->json([
+                    'settled' => true,
+                    'message' => 'This dining session has ended and the bill has been settled.',
+                ], 403);
             }
-        }
-        if (!$t) {
             return response()->json([]);
         }
 
@@ -256,14 +246,7 @@ class TableController extends Controller
                     ->where('notes', $notes)
                     ->first();
 
-                $itemPrice = ($menuItem->is_member_exclusive && $menuItem->promo_price !== null && $menuItem->promo_price > 0)
-                    ? (float) $menuItem->promo_price
-                    : (float) $menuItem->price;
-
-                if ($menuItem->is_member_exclusive && !str_contains($notes ?? '', 'Member Exclusive')) {
-                    $badgeText = $menuItem->promo_badge ?: 'Member Exclusive';
-                    $notes = "[{$badgeText}]" . ($notes ? " {$notes}" : '');
-                }
+                $itemPrice = (float) $menuItem->price;
 
                 if ($existingItem) {
                     $existingItem->increment('quantity', $qty);
@@ -434,9 +417,21 @@ class TableController extends Controller
             'merged_with' => null,
         ]);
 
-        // Also unmerge any auxiliary tables that were merged into this table
-        DiningTable::where('merged_with', "Table {$number}")
-            ->update(['merged_with' => null, 'status' => 'available']);
+        // Also unmerge and rotate tokens for any auxiliary tables that were merged into this table
+        $auxTables = DiningTable::where('merged_with', "Table {$number}")->get();
+        foreach ($auxTables as $aux) {
+            if ($aux->token) {
+                cache()->put("settled_token:{$aux->token}", [
+                    'table_number' => $aux->number,
+                    'settled_at' => now()->toIso8601String(),
+                ], now()->addHours(48));
+            }
+            $aux->update([
+                'token' => Str::random(12),
+                'merged_with' => null,
+                'status' => 'available',
+            ]);
+        }
 
         PosUpdated::safeDispatch();
         return response()->json([
@@ -475,11 +470,9 @@ class TableController extends Controller
         $table = DiningTable::where('token', $token)->first();
         if (!$table) {
             $settled = cache()->get("settled_token:{$token}");
-            if ($settled && !empty($settled['table_number'])) {
-                $table = DiningTable::where('number', (int) $settled['table_number'])->first();
+            if ($settled) {
+                abort(403, 'This dining session has ended and the bill has been settled. Please scan the QR code on your table to request service.');
             }
-        }
-        if (!$table) {
             abort(404, 'Invalid table QR token.');
         }
 

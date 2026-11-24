@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { api } from '../lib'
+import { api, ago } from '../lib'
 
 export default function KitchenDisplay({ orders = [], reload = () => {} }) {
   const [struckItems, setStruckItems] = useState({})

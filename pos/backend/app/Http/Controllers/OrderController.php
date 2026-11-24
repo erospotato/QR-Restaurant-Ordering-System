@@ -31,11 +31,9 @@ class OrderController extends Controller
         $table = DiningTable::where('token', $r->token)->first();
         if (!$table) {
             $settled = cache()->get("settled_token:{$r->token}");
-            if ($settled && !empty($settled['table_number'])) {
-                $table = DiningTable::where('number', (int) $settled['table_number'])->first();
+            if ($settled) {
+                abort(403, 'This dining session has ended and the bill has been settled. Please scan the QR code on your table to start a new order.');
             }
-        }
-        if (!$table) {
             abort(404, 'Invalid table QR token. Please scan the QR code on your table.');
         }
         abort_unless(RateLimiter::attempt('order:' . $table->id, 10, fn () => true, 60), 429, 'Too many orders, please wait a moment.');
@@ -65,33 +63,8 @@ class OrderController extends Controller
                 $m = MenuItem::where('is_available', true)->find($i['id']);
                 if (!$m) continue;
 
-                // Enforce Member Exclusivity
-                if ($m->is_member_exclusive) {
-                    abort_unless(
-                        $member,
-                        403,
-                        "Item '{$m->name}' is reserved exclusively for MOLS MAISON members. Please enter or register your membership phone number to order this item."
-                    );
-                    $minTier = $m->min_member_tier ?: 'Bronze';
-                    $userTierLevel = $tierLevels[$member->tier] ?? 1;
-                    $reqTierLevel = $tierLevels[$minTier] ?? 1;
-                    abort_if(
-                        $userTierLevel < $reqTierLevel,
-                        403,
-                        "Item '{$m->name}' is a {$minTier} tier exclusive promotion. Your current tier is {$member->tier}."
-                    );
-                }
-
-                // If member promotional price is configured, give the member discounted price
-                $unitPrice = ($m->is_member_exclusive && $m->promo_price !== null && $m->promo_price > 0)
-                    ? (float) $m->promo_price
-                    : (float) $m->price;
-
+                $unitPrice = (float) $m->price;
                 $itemNotes = $i['notes'] ?? null;
-                if ($m->is_member_exclusive) {
-                    $badgeText = $m->promo_badge ?: 'Member Exclusive';
-                    $itemNotes = "[{$badgeText}]" . ($itemNotes ? " {$itemNotes}" : '');
-                }
 
                 $order->items()->create([
                     'menu_item_id' => $m->id,

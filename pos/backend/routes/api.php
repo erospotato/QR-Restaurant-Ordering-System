@@ -16,6 +16,8 @@ Route::get('/network-info', [TableController::class, 'networkInfo']);
 
 // Public Customer Loyalty & Membership Lookup / Registration
 Route::get('/members/lookup', [MemberController::class, 'lookup']);
+Route::post('/members/lookup', [MemberController::class, 'lookup']);
+Route::post('/members/verify', [MemberController::class, 'verify']);
 Route::post('/members/register', [MemberController::class, 'register']);
 Route::get('/members/{phone}', [MemberController::class, 'lookup']);
 

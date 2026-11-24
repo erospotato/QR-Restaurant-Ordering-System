@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { api, money, inp, timeStr, ago } from '../lib'
+import { api, money, inp, timeStr, ago, formatImageUrl } from '../lib'
 import { Icons } from './Icons'
 import { useDialog } from '../context/DialogContext'
 import logo from '../assets/imgs/logo.jpg'
@@ -85,34 +85,65 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
     return activeOrders.reduce((sum, o) => sum + o.total, 0)
   }, [activeOrders])
 
+  // Automatic Member Promotional Dish Discount (applied when member is entered)
+  const memberPromoSavings = useMemo(() => {
+    if (!selectedMember) return { total: 0, items: [] }
+    let total = 0
+    const discountedItems = []
+
+    allActiveItems.forEach((it) => {
+      const menuItem = (menu || []).find((m) => m.id === it.menu_item_id)
+      if (menuItem && menuItem.is_member_exclusive && menuItem.promo_price > 0 && menuItem.promo_price < it.price) {
+        const itemSaving = Math.round((it.price - menuItem.promo_price) * it.qty * 100) / 100
+        if (itemSaving > 0) {
+          total += itemSaving
+          discountedItems.push({
+            name: it.name,
+            regularPrice: it.price,
+            promoPrice: menuItem.promo_price,
+            qty: it.qty,
+            saving: itemSaving,
+          })
+        }
+      }
+    })
+
+    return { total: Math.round(total * 100) / 100, items: discountedItems }
+  }, [selectedMember, allActiveItems, menu])
+
+  const memberPromoDiscountAmount = memberPromoSavings.total
+
   const manualDiscountAmount = useMemo(() => {
+    const remaining = Math.max(0, subtotal - memberPromoDiscountAmount)
     if (discountMode === 'custom') {
       const val = parseFloat(customDiscountVal) || 0
       if (customDiscountType === 'fixed') {
-        return Math.min(subtotal, Math.max(0, val))
+        return Math.min(remaining, Math.max(0, val))
       }
-      return Math.min(subtotal, Math.max(0, (subtotal * val) / 100))
+      return Math.min(remaining, Math.max(0, (remaining * val) / 100))
     }
-    return (subtotal * (discountPercent || 0)) / 100
-  }, [subtotal, discountMode, customDiscountVal, customDiscountType, discountPercent])
+    return (remaining * (discountPercent || 0)) / 100
+  }, [subtotal, memberPromoDiscountAmount, discountMode, customDiscountVal, customDiscountType, discountPercent])
 
   // Member tier discount (e.g. Silver 5%, Gold 10%, VIP 15%)
   const memberDiscountAmount = useMemo(() => {
     if (!selectedMember || !memberDiscountActive || !selectedMember.discount_percent) return 0
-    const remaining = Math.max(0, subtotal - manualDiscountAmount)
+    const remaining = Math.max(0, subtotal - memberPromoDiscountAmount - manualDiscountAmount)
     return Math.round(((remaining * selectedMember.discount_percent) / 100) * 100) / 100
-  }, [selectedMember, memberDiscountActive, subtotal, manualDiscountAmount])
+  }, [selectedMember, memberDiscountActive, subtotal, memberPromoDiscountAmount, manualDiscountAmount])
 
   // Points redemption discount ($0.05 per point, e.g. 100 pts = $5.00)
   const pointsDiscountAmount = useMemo(() => {
     if (!selectedMember || !pointsToRedeem) return 0
-    const remaining = Math.max(0, subtotal - manualDiscountAmount - memberDiscountAmount)
+    const remaining = Math.max(0, subtotal - memberPromoDiscountAmount - manualDiscountAmount - memberDiscountAmount)
     return Math.min(remaining, Math.round(pointsToRedeem * 0.05 * 100) / 100)
-  }, [selectedMember, pointsToRedeem, subtotal, manualDiscountAmount, memberDiscountAmount])
+  }, [selectedMember, pointsToRedeem, subtotal, memberPromoDiscountAmount, manualDiscountAmount, memberDiscountAmount])
 
   const totalDiscount = useMemo(() => {
-    return Math.round((manualDiscountAmount + memberDiscountAmount + pointsDiscountAmount) * 100) / 100
-  }, [manualDiscountAmount, memberDiscountAmount, pointsDiscountAmount])
+    return Math.round((memberPromoDiscountAmount + manualDiscountAmount + memberDiscountAmount + pointsDiscountAmount) * 100) / 100
+  }, [memberPromoDiscountAmount, manualDiscountAmount, memberDiscountAmount, pointsDiscountAmount])
+
+  const discountAmount = totalDiscount
 
   const finalTotal = useMemo(() => {
     return Math.max(0, Math.round((subtotal - totalDiscount) * 100) / 100)
@@ -267,6 +298,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
         subtotal,
         discountAmount: totalDiscount,
         discountNote: [
+          memberPromoDiscountAmount > 0 ? `Member Promo Dishes (-${money(memberPromoDiscountAmount)})` : null,
           discountMode === 'custom' ? (discountReason || 'Custom Discount') : (discountPercent > 0 ? `${discountPercent}%` : null),
           memberDiscountAmount > 0 ? `${selectedMember?.tier} Member (${selectedMember?.discount_percent}%)` : null,
           pointsDiscountAmount > 0 ? `Redeemed ${pointsToRedeem} pts` : null,
@@ -715,8 +747,8 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                   <div className="pt-1.5 border-t border-warm-100 space-y-2">
                     <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-warm-600">
                       <span>Discount / Promo</span>
-                      {discountAmount > 0 && (
-                        <span className="text-emerald-700 font-mono font-bold">-{money(discountAmount)}</span>
+                      {manualDiscountAmount > 0 && (
+                        <span className="text-emerald-700 font-mono font-bold">-{money(manualDiscountAmount)}</span>
                       )}
                     </div>
                     <div className="grid grid-cols-5 gap-1.5 text-xs">
@@ -825,7 +857,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                         <div className="flex gap-1.5">
                           <input
                             type="text"
-                            placeholder="Search member by phone or name..."
+                            placeholder="Enter membership # or phone number..."
                             value={memberQuery}
                             onChange={(e) => handleSearchMember(e.target.value)}
                             onKeyDown={(e) => {
@@ -851,7 +883,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                                 className="w-full text-left rounded-xl p-2 hover:bg-warm-100 flex items-center justify-between transition text-xs"
                               >
                                 <div>
-                                  <div className="font-semibold text-warm-900">{m.name}</div>
+                                  <div className="font-semibold text-warm-900">{m.name} <span className="text-[10px] text-warm-400 font-mono">#{m.id}</span></div>
                                   <div className="font-mono text-[11px] text-warm-500">{m.phone}</div>
                                 </div>
                                 <div className="text-right">
@@ -932,6 +964,24 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                           </label>
                         )}
 
+                        {/* Automatic Member Promo Dishes Savings */}
+                        {memberPromoSavings.items.length > 0 && (
+                          <div className="rounded-xl bg-purple-100/90 p-2.5 border border-purple-200 text-xs text-purple-950 space-y-1">
+                            <div className="flex items-center justify-between font-bold text-[11px] text-purple-900">
+                              <span>✦ Member Exclusive Dish Savings</span>
+                              <span className="font-mono text-purple-900 font-bold">-{money(memberPromoDiscountAmount)}</span>
+                            </div>
+                            <div className="space-y-0.5 text-[10px] text-purple-800">
+                              {memberPromoSavings.items.map((it, idx) => (
+                                <div key={idx} className="flex justify-between">
+                                  <span className="truncate">{it.qty}× {it.name}</span>
+                                  <span className="font-mono font-semibold">({money(it.regularPrice)} → {money(it.promoPrice)})</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Redeem Points Option */}
                         {selectedMember.points >= 50 && (
                           <div className="pt-1 border-t border-amber-200/60 flex items-center justify-between text-xs">
@@ -998,6 +1048,13 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                       <span>Subtotal</span>
                       <span className="font-mono text-warm-900 font-semibold">{money(subtotal)}</span>
                     </div>
+
+                    {memberPromoDiscountAmount > 0 && (
+                      <div className="flex justify-between text-purple-800 font-medium bg-purple-50 px-2 py-1 rounded-lg border border-purple-200">
+                        <span>✦ Member Exclusive Dish Savings</span>
+                        <span className="font-mono font-bold">-{money(memberPromoDiscountAmount)}</span>
+                      </div>
+                    )}
 
                     {manualDiscountAmount > 0 && (
                       <div className="flex justify-between text-emerald-700 font-medium">
@@ -1315,223 +1372,226 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
       
 {/* Printable Thermal Receipt Modal */}
 {showReceiptModal && (lastSettlement || selectedTable) && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-warm-950/60 p-4 backdrop-blur-xs print:bg-transparent print:p-0 print:static">
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-warm-950/60 p-2 sm:p-4 backdrop-blur-xs overflow-y-auto print:bg-transparent print:p-0 print:static print:overflow-visible">
 
-    <div className="w-[340px] max-w-full rounded-3xl bg-white p-6 shadow-2xl space-y-4 print:p-0 print:shadow-none print:w-[80mm] print:rounded-none">
+    <div className="w-[320px] max-w-full max-h-[90vh] my-auto flex flex-col rounded-3xl bg-white shadow-2xl overflow-hidden print:max-h-none print:shadow-none print:w-[80mm] print:rounded-none print:overflow-visible print:my-0">
 
-      <div
-        id="printable-receipt"
-        className="font-mono text-xs text-black space-y-3 w-full"
-      >
+      {/* Scrollable Receipt Body */}
+      <div className="overflow-y-auto flex-1 p-4 sm:p-5 print:overflow-visible print:p-0">
+        <div
+          id="printable-receipt"
+          className="font-mono text-[11px] text-black space-y-2.5 w-full leading-relaxed"
+        >
 
-        {/* Restaurant Header */}
-        <div className="text-center pb-3 border-b-2 border-double border-black">
+          {/* Restaurant Header */}
+          <div className="text-center pb-2.5 border-b-2 border-double border-black">
 
-          <img
-            src={logo}
-            alt="MOLS MAISON"
-            className="mx-auto h-16 w-16 object-contain rounded-full mb-2"
-          />
+            <img
+              src={logo}
+              alt="MOLS MAISON"
+              className="mx-auto h-12 w-12 object-contain rounded-full mb-1.5"
+            />
 
-          <p className="text-[9px] uppercase tracking-[0.35em]">
-            An Exceptional Dining Experience
-          </p>
+            <p className="text-[8px] uppercase tracking-[0.3em]">
+              An Exceptional Dining Experience
+            </p>
 
-          <h3 className="font-logo text-2xl tracking-[0.18em] font-bold mt-1">
-            MOLS MAISON
-          </h3>
+            <h3 className="font-logo text-xl tracking-[0.16em] font-bold mt-0.5">
+              MOLS MAISON
+            </h3>
 
-          <p className="text-[9px] uppercase tracking-[0.3em] mt-1">
-            MONACO
-          </p>
+            <p className="text-[8px] uppercase tracking-[0.25em] mt-0.5">
+              MONACO
+            </p>
 
-          <div className="my-2 text-[10px] tracking-[0.4em]">
-            ✦ · ✦ · ✦
+            <div className="my-1 text-[9px] tracking-[0.3em]">
+              ✦ · ✦ · ✦
+            </div>
+
+            <p className="text-[9px]">
+              12 Avenue des Spélugues
+            </p>
+            <p className="text-[9px]">
+              Monaco · Tel: +377 67 67 67
+            </p>
+
           </div>
 
-          <p className="text-[10px]">
-            12 Avenue des Spélugues
-          </p>
-          <p className="text-[10px]">
-            Monaco · Tel: +377 67 67 67
-          </p>
+          {/* Receipt Information */}
+          <div className="py-2 border-b border-dashed border-black space-y-1">
 
-        </div>
+            <div className="flex justify-between font-bold">
+              <span>RECEIPT</span>
+              <span>#{lastSettlement?.id || "0001"}</span>
+            </div>
 
-        {/* Receipt Information */}
-        <div className="py-2.5 border-b border-dashed border-black space-y-1.5">
-
-          <div className="flex justify-between font-bold">
-            <span>RECEIPT</span>
-            <span>#{lastSettlement?.id || "0001"}</span>
-          </div>
-
-          <div className="flex justify-between">
-            <span>Table Number</span>
-            <span>#{lastSettlement ? lastSettlement.table : selectedTable}</span>
-          </div>
-
-          <div className="flex justify-between">
-            <span>Server</span>
-            <span>{cashierName}</span>
-          </div>
-
-          {lastSettlement?.customerName && (
             <div className="flex justify-between">
-              <span>Guest</span>
-              <span className="font-semibold">{lastSettlement.customerName}</span>
+              <span>Table Number</span>
+              <span>#{lastSettlement ? lastSettlement.table : selectedTable}</span>
             </div>
-          )}
 
-          <div className="flex justify-between">
-            <span>Date</span>
-            <span>{lastSettlement ? lastSettlement.date : new Date().toLocaleString()}</span>
-          </div>
-
-        </div>
-
-        {/* Order Items */}
-        <div className="py-2.5 space-y-2 border-b border-dashed border-black">
-
-          <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider pb-1">
-            <span>Item Description</span>
-            <span>Amount</span>
-          </div>
-
-          {(lastSettlement ? lastSettlement.items : allActiveItems).map((item, idx) => (
-            <div key={idx} className="flex justify-between items-start gap-2 text-xs">
-              <span className="flex-1 break-words">
-                {item.qty} × {item.name}
-              </span>
-              <span className="shrink-0 font-medium">
-                {money(item.price * item.qty)}
-              </span>
-            </div>
-          ))}
-
-        </div>
-
-        {/* Payment Summary */}
-        <div className="space-y-2 pt-1 text-xs">
-
-          <div className="flex justify-between">
-            <span>Subtotal</span>
-            <span>{money(lastSettlement ? lastSettlement.subtotal : subtotal)}</span>
-          </div>
-
-          {(lastSettlement ? lastSettlement.discountAmount : totalDiscount) > 0 && (
             <div className="flex justify-between">
-              <span>
-                Discount {lastSettlement?.discountNote ? `(${lastSettlement.discountNote})` : ""}
-              </span>
-              <span>-{money(lastSettlement ? lastSettlement.discountAmount : totalDiscount)}</span>
+              <span>Server</span>
+              <span>{cashierName}</span>
             </div>
-          )}
 
-          {lastSettlement?.member && (
-            <div className="py-1.5 border-t border-dashed border-black my-1 space-y-1">
-              <div className="flex justify-between font-bold">
-                <span>✦ Member</span>
-                <span>{lastSettlement.member.tier} Tier</span>
-              </div>
-              <div className="flex justify-between text-[11px]">
-                <span>Points Earned Today</span>
-                <span className="font-bold">+{lastSettlement.member.points_earned_this_visit || 0} pts</span>
-              </div>
-              <div className="flex justify-between text-[11px]">
-                <span>Current Total Balance</span>
-                <span className="font-bold">{lastSettlement.member.points} pts</span>
-              </div>
-            </div>
-          )}
-
-        </div>
-
-        {/* Grand Total */}
-        <div className="border-y-2 border-double border-black py-3">
-          <div className="flex justify-between items-center font-black text-sm">
-            <span>TOTAL PAID</span>
-            <span>
-              {money(lastSettlement ? lastSettlement.finalTotal : finalTotal)}
-            </span>
-          </div>
-        </div>
-
-        {/* Payment Details */}
-        <div className="space-y-2 text-xs">
-
-          <div className="flex justify-between">
-            <span>Payment Method</span>
-            <span className="uppercase font-bold">
-              {lastSettlement ? lastSettlement.paymentMode : paymentMode}
-            </span>
-          </div>
-
-          <div className="flex justify-between font-bold">
-            <span>Payment Status</span>
-            <span>✓ PAID</span>
-          </div>
-
-          {(lastSettlement ? lastSettlement.paymentMode : paymentMode) === "cash" && (
-            <>
+            {lastSettlement?.customerName && (
               <div className="flex justify-between">
-                <span>Amount Tendered</span>
-                <span>
-                  {money(lastSettlement ? lastSettlement.tendered : (parseFloat(cashTendered) || finalTotal))}
-                </span>
+                <span>Guest</span>
+                <span className="font-semibold">{lastSettlement.customerName}</span>
               </div>
+            )}
 
-              <div className="flex justify-between font-bold">
-                <span>Change Returned</span>
-                <span>
-                  {money(lastSettlement ? lastSettlement.changeDue : changeDue)}
-                </span>
-              </div>
-            </>
-          )}
+            <div className="flex justify-between">
+              <span>Date</span>
+              <span>{lastSettlement ? lastSettlement.date : new Date().toLocaleString()}</span>
+            </div>
 
-        </div>
-
-        {/* Thank You Footer */}
-        <div className="text-center pt-4 border-t border-dashed border-black space-y-1">
-
-          <p className="font-logo text-lg tracking-widest">
-            Merci Beaucoup
-          </p>
-
-          <p className="text-[10px]">
-            Thank you for dining with us.
-          </p>
-
-          <p className="text-[10px]">
-            We look forward to welcoming you again.
-          </p>
-
-          <div className="pt-3 text-[9px] tracking-[0.3em] font-bold">
-            MOLS MAISON · MONACO
           </div>
 
-          <p className="text-[9px] tracking-wider pt-1">
-            ✦ BON APPÉTIT ✦
-          </p>
+          {/* Order Items */}
+          <div className="py-2 space-y-1.5 border-b border-dashed border-black">
+
+            <div className="flex justify-between text-[9px] font-bold uppercase tracking-wider pb-0.5">
+              <span>Item Description</span>
+              <span>Amount</span>
+            </div>
+
+            {(lastSettlement ? lastSettlement.items : allActiveItems).map((item, idx) => (
+              <div key={idx} className="flex justify-between items-start gap-2 text-[11px]">
+                <span className="flex-1 break-words">
+                  {item.qty} × {item.name}
+                </span>
+                <span className="shrink-0 font-medium">
+                  {money(item.price * item.qty)}
+                </span>
+              </div>
+            ))}
+
+          </div>
+
+          {/* Payment Summary */}
+          <div className="space-y-1.5 pt-1 text-[11px]">
+
+            <div className="flex justify-between">
+              <span>Subtotal</span>
+              <span>{money(lastSettlement ? lastSettlement.subtotal : subtotal)}</span>
+            </div>
+
+            {(lastSettlement ? lastSettlement.discountAmount : totalDiscount) > 0 && (
+              <div className="flex justify-between">
+                <span>
+                  Discount {lastSettlement?.discountNote ? `(${lastSettlement.discountNote})` : ""}
+                </span>
+                <span>-{money(lastSettlement ? lastSettlement.discountAmount : totalDiscount)}</span>
+              </div>
+            )}
+
+            {lastSettlement?.member && (
+              <div className="py-1 border-t border-dashed border-black my-1 space-y-0.5">
+                <div className="flex justify-between font-bold">
+                  <span>✦ Member</span>
+                  <span>{lastSettlement.member.tier} Tier</span>
+                </div>
+                <div className="flex justify-between text-[10px]">
+                  <span>Points Earned Today</span>
+                  <span className="font-bold">+{lastSettlement.member.points_earned_this_visit || 0} pts</span>
+                </div>
+                <div className="flex justify-between text-[10px]">
+                  <span>Current Total Balance</span>
+                  <span className="font-bold">{lastSettlement.member.points} pts</span>
+                </div>
+              </div>
+            )}
+
+          </div>
+
+          {/* Grand Total */}
+          <div className="border-y-2 border-double border-black py-2">
+            <div className="flex justify-between items-center font-black text-xs sm:text-sm">
+              <span>TOTAL PAID</span>
+              <span>
+                {money(lastSettlement ? lastSettlement.finalTotal : finalTotal)}
+              </span>
+            </div>
+          </div>
+
+          {/* Payment Details */}
+          <div className="space-y-1.5 text-[11px]">
+
+            <div className="flex justify-between">
+              <span>Payment Method</span>
+              <span className="uppercase font-bold">
+                {lastSettlement ? lastSettlement.paymentMode : paymentMode}
+              </span>
+            </div>
+
+            <div className="flex justify-between font-bold">
+              <span>Payment Status</span>
+              <span>✓ PAID</span>
+            </div>
+
+            {(lastSettlement ? lastSettlement.paymentMode : paymentMode) === "cash" && (
+              <>
+                <div className="flex justify-between">
+                  <span>Amount Tendered</span>
+                  <span>
+                    {money(lastSettlement ? lastSettlement.tendered : (parseFloat(cashTendered) || finalTotal))}
+                  </span>
+                </div>
+
+                <div className="flex justify-between font-bold">
+                  <span>Change Returned</span>
+                  <span>
+                    {money(lastSettlement ? lastSettlement.changeDue : changeDue)}
+                  </span>
+                </div>
+              </>
+            )}
+
+          </div>
+
+          {/* Thank You Footer */}
+          <div className="text-center pt-2.5 border-t border-dashed border-black space-y-0.5">
+
+            <p className="font-logo text-base tracking-widest">
+              Merci Beaucoup
+            </p>
+
+            <p className="text-[9px]">
+              Thank you for dining with us.
+            </p>
+
+            <p className="text-[9px]">
+              We look forward to welcoming you again.
+            </p>
+
+            <div className="pt-2 text-[8px] tracking-[0.25em] font-bold">
+              MOLS MAISON · MONACO
+            </div>
+
+            <p className="text-[8px] tracking-wider pt-0.5">
+              ✦ BON APPÉTIT ✦
+            </p>
+
+          </div>
 
         </div>
-
       </div>
 
-      {/* Modal Actions */}
-      <div className="flex gap-2 pt-2 print-hide">
+      {/* Pinned Modal Actions */}
+      <div className="flex gap-2 p-3 bg-warm-50/90 border-t border-warm-200/80 shrink-0 print:hidden">
 
         <button
           onClick={handlePrintReceipt}
-          className="flex-1 rounded-xl bg-warm-900 py-3.5 font-display text-xs sm:text-sm font-bold text-white shadow-md hover:bg-brand hover:text-white active:bg-brand-dark transition"
+          className="flex-1 rounded-xl bg-warm-900 py-2.5 font-display text-xs sm:text-sm font-bold text-white shadow-md hover:bg-brand hover:text-white active:bg-brand-dark transition"
         >
           Print Receipt
         </button>
 
         <button
           onClick={() => setShowReceiptModal(false)}
-          className="rounded-xl border border-warm-300 px-4 py-3.5 text-xs sm:text-sm font-bold text-warm-700 hover:bg-warm-100 hover:text-warm-950 transition"
+          className="rounded-xl border border-warm-300 px-4 py-2.5 text-xs sm:text-sm font-bold text-warm-700 hover:bg-warm-100 hover:text-warm-950 transition"
         >
           Close
         </button>

@@ -20,6 +20,7 @@ class MemberController extends Controller
 
         $members = Member::where('phone', 'like', "%{$q}%")
             ->orWhere('name', 'like', "%{$q}%")
+            ->orWhere('id', $q)
             ->limit(10)
             ->get();
 
@@ -27,11 +28,66 @@ class MemberController extends Controller
     }
 
     /**
-     * Single member lookup by phone or ID (Public / Customer & Staff)
+     * Customer verification of membership requiring BOTH member number/phone AND password
+     */
+    public function verify(Request $r)
+    {
+        $identifier = trim($r->input('number', $r->input('phone', '')));
+        $password = trim($r->input('password', ''));
+
+        if (!$identifier) {
+            abort(422, 'Membership number or phone number is required.');
+        }
+        if (!$password) {
+            abort(422, 'Membership password or PIN is required.');
+        }
+
+        $cleanPhone = preg_replace('/[^0-9]/', '', $identifier);
+
+        $member = Member::where('phone', $identifier)
+            ->orWhere('phone', $cleanPhone)
+            ->orWhere('id', $identifier)
+            ->first();
+
+        if (!$member) {
+            abort(404, 'No membership found matching that number or phone.');
+        }
+
+        if (!$member->verifyPassword($password)) {
+            abort(401, 'Incorrect membership password or PIN. Please try again.');
+        }
+
+        // Include recent order history for this verified member
+        $recentOrders = Order::where('member_id', $member->id)
+            ->whereNotNull('paid_at')
+            ->orderByDesc('paid_at')
+            ->limit(10)
+            ->get()
+            ->map(fn ($o) => [
+                'id' => $o->id,
+                'table' => $o->diningTable?->number,
+                'total' => (float) $o->total,
+                'points_earned' => (int) $o->points_earned,
+                'paid_at' => $o->paid_at->toIso8601String(),
+                'items_count' => $o->items->sum('quantity'),
+            ]);
+
+        $data = $member->toApi();
+        $data['recent_orders'] = $recentOrders;
+
+        return response()->json([
+            'ok' => true,
+            'member' => $data,
+            'message' => "Welcome back, {$member->name}!",
+        ]);
+    }
+
+    /**
+     * Single member lookup by phone or ID (Staff or with Password)
      */
     public function lookup(Request $r)
     {
-        $phone = trim($r->query('phone', $r->query('q', '')));
+        $phone = trim($r->input('phone', $r->query('phone', $r->query('q', $r->input('number', '')))));
         if (!$phone) {
             abort(422, 'Phone number or member ID is required.');
         }
@@ -46,6 +102,17 @@ class MemberController extends Controller
 
         if (!$member) {
             abort(404, 'Member not found. Check the phone number or register a new membership.');
+        }
+
+        // If not authenticated as staff, require password verification
+        if (!auth('sanctum')->check()) {
+            $password = trim($r->input('password', $r->query('password', '')));
+            if (!$password) {
+                abort(422, 'Membership password is required to access your account.');
+            }
+            if (!$member->verifyPassword($password)) {
+                abort(401, 'Incorrect membership password or PIN. Please try again.');
+            }
         }
 
         // Include recent order history for this member
@@ -78,13 +145,16 @@ class MemberController extends Controller
             'name' => 'required|string|max:100',
             'phone' => 'required|string|max:25',
             'email' => 'nullable|email|max:100',
+            'password' => 'nullable|string|min:4|max:50',
         ]);
 
         $cleanPhone = trim($d['phone']);
 
         $existing = Member::where('phone', $cleanPhone)->first();
         if ($existing) {
-            // If already exists, return existing profile
+            if ($r->filled('password')) {
+                $existing->update(['password' => \Illuminate\Support\Facades\Hash::make(trim($d['password']))]);
+            }
             return response()->json([
                 'member' => $existing->toApi(),
                 'already_registered' => true,
@@ -92,11 +162,16 @@ class MemberController extends Controller
             ]);
         }
 
+        $password = !empty($d['password'])
+            ? \Illuminate\Support\Facades\Hash::make(trim($d['password']))
+            : \Illuminate\Support\Facades\Hash::make('1234');
+
         // 50 Welcome Points for new registrations!
         $member = Member::create([
             'name' => trim($d['name']),
             'phone' => $cleanPhone,
             'email' => isset($d['email']) ? trim($d['email']) : null,
+            'password' => $password,
             'tier' => 'bronze',
             'points' => 50,
             'total_spent' => 0,

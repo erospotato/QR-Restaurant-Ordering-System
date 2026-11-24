@@ -7,6 +7,7 @@ import {
   playChime,
   timeStr,
   useLive,
+  inp,
 } from "../lib";
 
 import logo from "../assets/imgs/logo.jpg";
@@ -342,6 +343,14 @@ export default function Customer() {
   const [activeItemModal, setActiveItemModal] = useState(null);
   const [exclusivePromptDish, setExclusivePromptDish] = useState(null);
 
+  // Preference customization modal state
+  const [customPrefIce, setCustomPrefIce] = useState("");
+  const [customPrefSweet, setCustomPrefSweet] = useState("");
+  const [customPrefOption, setCustomPrefOption] = useState("");
+  const [customPrefNotes, setCustomPrefNotes] = useState("");
+  const [customPrefQty, setCustomPrefQty] = useState(1);
+  const [itemAddedToast, setItemAddedToast] = useState(null);
+
   const [showCartDrawer, setShowCartDrawer] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showCallStaffModal, setShowCallStaffModal] = useState(false);
@@ -349,48 +358,62 @@ export default function Customer() {
 
   // Membership & Rewards State for Customer
   const [showMemberModal, setShowMemberModal] = useState(false);
-  const [memberPhoneInput, setMemberPhoneInput] = useState(() => localStorage.getItem("mols_customer_member_phone") || "");
+  const [memberNumberInput, setMemberNumberInput] = useState(() => localStorage.getItem("mols_customer_member_number") || "");
+  const [memberPasswordInput, setMemberPasswordInput] = useState("");
   const [memberData, setMemberData] = useState(null);
   const [memberLoading, setMemberLoading] = useState(false);
   const [memberError, setMemberError] = useState("");
   const [showRegisterInCustomer, setShowRegisterInCustomer] = useState(false);
-  const [customerRegisterForm, setCustomerRegisterForm] = useState({ name: "", phone: "", email: "" });
+  const [customerRegisterForm, setCustomerRegisterForm] = useState({ name: "", phone: "", email: "", password: "" });
   const [customerRegisterLoading, setCustomerRegisterLoading] = useState(false);
 
-  // Auto-fetch member info if phone is saved in localStorage
-  const lookupMember = useCallback(async (phoneToLookup) => {
-    const targetPhone = phoneToLookup || memberPhoneInput;
-    if (!targetPhone || !targetPhone.trim()) {
-      setMemberError("Please enter your registered phone number.");
-      return;
+  // Verify member credentials requiring BOTH membership number/phone AND password
+  const verifyMember = useCallback(async (numToVerify, passToVerify) => {
+    const targetNum = numToVerify || memberNumberInput;
+    const targetPass = passToVerify !== undefined ? passToVerify : memberPasswordInput;
+
+    if (!targetNum || !targetNum.trim()) {
+      setMemberError("Please enter your registered phone or membership number.");
+      return null;
     }
+    if (!targetPass || !targetPass.trim()) {
+      setMemberError("Please enter your membership password or PIN.");
+      return null;
+    }
+
     setMemberLoading(true);
     setMemberError("");
     try {
-      const res = await api(`/members/lookup?phone=${encodeURIComponent(targetPhone.trim())}`);
-      setMemberData(res);
-      localStorage.setItem("mols_customer_member_phone", targetPhone.trim());
-      return res;
+      const res = await api("/members/verify", {
+        method: "POST",
+        body: {
+          number: targetNum.trim(),
+          password: targetPass.trim(),
+        },
+      });
+      const member = res.member || res;
+      setMemberData(member);
+      localStorage.setItem("mols_customer_member_number", targetNum.trim());
+      localStorage.setItem("mols_customer_member_phone", member.phone);
+      setMemberPasswordInput("");
+      return member;
     } catch (err) {
-      setMemberError(err.message || "No membership found for this phone number. You can join below in 10 seconds!");
+      setMemberError(err.message || "Invalid membership number or password. Please try again.");
       setMemberData(null);
       return null;
     } finally {
       setMemberLoading(false);
     }
-  }, [memberPhoneInput]);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("mols_customer_member_phone");
-    if (saved) {
-      lookupMember(saved);
-    }
-  }, [lookupMember]);
+  }, [memberNumberInput, memberPasswordInput]);
 
   const handleCustomerRegister = async (e) => {
     if (e) e.preventDefault();
     if (!customerRegisterForm.name || !customerRegisterForm.phone) {
       alert("Please provide both name and phone number.");
+      return;
+    }
+    if (!customerRegisterForm.password || customerRegisterForm.password.length < 4) {
+      alert("Please choose a password or PIN with at least 4 characters.");
       return;
     }
     setCustomerRegisterLoading(true);
@@ -401,7 +424,8 @@ export default function Customer() {
       });
       if (res?.member) {
         setMemberData(res.member);
-        setMemberPhoneInput(res.member.phone);
+        setMemberNumberInput(res.member.phone);
+        localStorage.setItem("mols_customer_member_number", res.member.phone);
         localStorage.setItem("mols_customer_member_phone", res.member.phone);
         setShowRegisterInCustomer(false);
         setMemberError("");
@@ -435,14 +459,14 @@ export default function Customer() {
         api(`/tables/${token}/orders`),
       ]);
 
-      if (t?.redirect_token && t.redirect_token !== token) {
-        navigate(`/t/${t.redirect_token}`, { replace: true });
-        return;
-      }
-
       if (t?.settled) {
         setSessionSettled(true);
         if (t.table) setSettledTable(t.table);
+        setCart({});
+        setActiveItemModal(null);
+        setShowCartDrawer(false);
+        setShowConfirmModal(false);
+        setShowCallStaffModal(false);
         setLoading(false);
         setShowSplash(false);
         return;
@@ -453,8 +477,14 @@ export default function Customer() {
       setOrders(o || []);
       setSessionSettled(false);
     } catch (err) {
-      if (err.status === 403) {
+      if (err.status === 403 || err.data?.settled) {
         setSessionSettled(true);
+        if (err.data?.table) setSettledTable(err.data.table);
+        setCart({});
+        setActiveItemModal(null);
+        setShowCartDrawer(false);
+        setShowConfirmModal(false);
+        setShowCallStaffModal(false);
         setShowSplash(false);
       } else if (err.status === 404) {
         setInvalid(true);
@@ -462,7 +492,7 @@ export default function Customer() {
     } finally {
       setLoading(false);
     }
-  }, [token, navigate]);
+  }, [token]);
 
   useEffect(() => {
     loadData();
@@ -470,52 +500,79 @@ export default function Customer() {
 
   useLive(false, loadData);
 
-  const addToCartDirect = (dish, verifiedMember = null) => {
-    // If dish is member exclusive, customer must have verified their member phone
-    const hasMember = verifiedMember || memberData || localStorage.getItem("mols_customer_member_phone");
-    if (dish.is_member_exclusive && !hasMember) {
-      setExclusivePromptDish(dish);
-      return;
+  const openDishCustomizer = (dish) => {
+    if (!dish) return;
+
+    const config = getItemPreferenceConfig(dish);
+    const existing = cart[dish.id];
+
+    if (existing && existing.qty > 0) {
+      setCustomPrefQty(existing.qty);
+      setCustomPrefNotes(existing.notes || "");
+      if (config.type === "drink") {
+        const { ice, sweet } = getDrinkPreferences(existing.spice, config);
+        setCustomPrefIce(ice);
+        setCustomPrefSweet(sweet);
+      } else {
+        setCustomPrefOption(existing.spice || config.options[0]);
+      }
+    } else {
+      setCustomPrefQty(1);
+      setCustomPrefNotes("");
+      if (config.type === "drink") {
+        setCustomPrefIce(config.iceOptions[0]);
+        setCustomPrefSweet(config.sweetOptions[0]);
+      } else {
+        setCustomPrefOption(config.options[0]);
+      }
     }
 
-    setCart((prev) => {
-      const existing = prev[dish.id];
-      if (existing && existing.qty > 0) {
-        return {
-          ...prev,
-          [dish.id]: { ...existing, qty: existing.qty + 1 },
-        };
-      }
-      const config = getItemPreferenceConfig(dish);
-      const defaultPref =
-        config.type === "drink"
-          ? `${config.iceOptions[0]}, ${config.sweetOptions[0]}`
-          : config.options[0];
-      return {
-        ...prev,
-        [dish.id]: {
-          qty: 1,
-          spice: defaultPref,
-          notes: "",
-        },
-      };
-    });
-    playChime("ticket");
+    setActiveItemModal(dish);
   };
 
-  const openDishDetails = (item) => {
-    setActiveItemModal(item);
+  const handleSaveCustomization = () => {
+    if (!activeItemModal) return;
+    const config = getItemPreferenceConfig(activeItemModal);
+    const finalPref =
+      config.type === "drink"
+        ? `${customPrefIce}, ${customPrefSweet}`
+        : customPrefOption;
+
+    if (customPrefQty <= 0) {
+      setCart((prev) => {
+        const next = { ...prev };
+        delete next[activeItemModal.id];
+        return next;
+      });
+    } else {
+      setCart((prev) => ({
+        ...prev,
+        [activeItemModal.id]: {
+          qty: customPrefQty,
+          spice: finalPref,
+          notes: customPrefNotes.trim(),
+        },
+      }));
+    }
+
+    playChime("ticket");
+    setItemAddedToast({
+      name: activeItemModal.name,
+      spice: finalPref,
+      qty: customPrefQty,
+    });
+    setTimeout(() => {
+      setItemAddedToast(null);
+    }, 4000);
+
+    setActiveItemModal(null);
   };
+
+  const addToCartDirect = openDishCustomizer;
+  const openDishDetails = openDishCustomizer;
 
   const adjustQty = (id, delta) => {
     const dish = menu.find((m) => m.id === id);
-    if (delta > 0 && dish?.is_member_exclusive) {
-      const hasMember = memberData || localStorage.getItem("mols_customer_member_phone");
-      if (!hasMember) {
-        setExclusivePromptDish(dish);
-        return;
-      }
-    }
 
     setCart((prev) => {
       const current = prev[id];
@@ -599,6 +656,10 @@ export default function Customer() {
       }
       setTimeout(() => setServiceAlert(""), 5500);
     } catch (e) {
+      if (e.status === 403) {
+        setSessionSettled(true);
+        setShowCallStaffModal(false);
+      }
       alert(e.message || "Failed to call staff");
     }
   };
@@ -641,6 +702,12 @@ export default function Customer() {
       loadData();
       setTimeout(() => setOrderSuccessToast(false), 5000);
     } catch (err) {
+      if (err.status === 403) {
+        setSessionSettled(true);
+        setCart({});
+        setShowConfirmModal(false);
+        setShowCartDrawer(false);
+      }
       alert(err.message || "Order failed. Please try again.");
     } finally {
       setIsSubmitting(false);
@@ -681,8 +748,7 @@ export default function Customer() {
     return Object.entries(cart).reduce((sum, [id, val]) => {
       const dish = menu.find((m) => m.id === Number(id));
       if (!dish) return sum;
-      const unitPrice = (dish.is_member_exclusive && dish.promo_price > 0) ? dish.promo_price : dish.price;
-      return sum + unitPrice * val.qty;
+      return sum + dish.price * val.qty;
     }, 0);
   }, [cart, menu]);
 
@@ -728,38 +794,36 @@ export default function Customer() {
             has been settled and this session is now closed.
           </p>
 
-          <div className="mt-5 rounded-2xl bg-warm-50 p-4 text-xs text-warm-700 border border-warm-200 text-left space-y-1.5">
+          <div className="mt-5 rounded-2xl bg-warm-50 p-4 text-xs text-warm-700 border border-warm-200 text-left space-y-2">
             <div className="flex items-center gap-2 font-semibold text-warm-900">
               <Icons.Utensils />
               <span>Ordering Locked</span>
             </div>
             <p className="text-warm-600 leading-relaxed">
-              Customers are not allowed to place further orders on this settled
-              bill. If you wish to order more dishes or drinks, please rescan
-              your table's QR code.
+              Customers cannot place further orders or access this table on a settled bill.
             </p>
+            <div className="pt-2 border-t border-warm-200 flex items-start gap-2.5 text-amber-900 font-medium">
+              <span className="text-base leading-none">📱</span>
+              <span>
+                To start a new dining session, please <strong>scan the physical QR code</strong> on {tableNum ? `Table #${tableNum}` : "your table"} using your smartphone camera.
+              </span>
+            </div>
           </div>
 
-          <div className="mt-6 flex flex-col gap-2.5">
-            {tableNum ? (
-              <a
-                href={`/scan/${tableNum}`}
-                className="w-full rounded-xl bg-warm-900 py-3 text-xs sm:text-sm font-semibold text-white shadow-md hover:bg-warm-800 transition active:scale-95 text-center flex items-center justify-center gap-2"
-              >
-                <span>Rescan Table #{tableNum} QR Code</span>
-                <span>→</span>
-              </a>
-            ) : (
-              <button
-                onClick={() => window.location.reload()}
-                className="w-full rounded-xl bg-warm-900 py-3 text-xs sm:text-sm font-semibold text-white shadow-md hover:bg-warm-800 transition active:scale-95 text-center"
-              >
-                Refresh Session
-              </button>
-            )}
-            <p className="text-[11px] text-warm-400 font-mono">
-              Or point your smartphone camera at the table placard
-            </p>
+          <div className="mt-6">
+            <div className="rounded-2xl border border-dashed border-warm-300 bg-warm-50/80 p-4 text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-warm-100 text-warm-800 mb-2">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                </svg>
+              </div>
+              <p className="font-semibold text-xs text-warm-900">
+                Rescan Required
+              </p>
+              <p className="text-[11px] text-warm-500 mt-1 leading-relaxed">
+                Aim your smartphone camera at the table QR code to start a fresh dining session.
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -1193,11 +1257,6 @@ export default function Customer() {
 
                       {/* Badges Overlay */}
                       <div className="absolute left-2 top-2 flex flex-col gap-1">
-                        {item.is_member_exclusive && (
-                          <span className="flex items-center gap-1 rounded-md bg-gradient-to-r from-purple-950/95 to-amber-950/95 text-amber-200 border border-amber-400/50 px-2 py-0.5 text-[10px] font-bold backdrop-blur-xs shadow-xs">
-                            <span>{item.promo_badge || "✦ MEMBER EXCLUSIVE"}</span>
-                          </span>
-                        )}
                         {item.is_top_sale && (
                           <span className="flex items-center gap-1 rounded-md bg-warm-900/90 px-1.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-xs shadow-xs">
                             <Icons.Flame />
@@ -1235,23 +1294,9 @@ export default function Customer() {
 
                       {/* Bottom Price & Add Action with Zero Overflow */}
                       <div className="mt-2.5 pt-2 border-t border-warm-100 flex items-center justify-between gap-1.5 min-w-0">
-                        {item.is_member_exclusive && item.promo_price ? (
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="font-mono text-xs text-warm-400 line-through">
-                              {money(item.price)}
-                            </span>
-                            <span className="font-mono text-sm sm:text-base font-bold text-brand">
-                              {money(item.promo_price)}
-                            </span>
-                            <span className="text-[9px] font-bold text-purple-700 bg-purple-100 px-1 py-0.5 rounded">
-                              VIP
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="font-mono text-sm sm:text-base font-semibold text-warm-900 truncate">
-                            {money(item.price)}
-                          </span>
-                        )}
+                        <span className="font-mono text-sm sm:text-base font-semibold text-warm-900 truncate">
+                          {money(item.price)}
+                        </span>
 
                         {inCart.qty > 0 ? (
                           <div className="flex items-center gap-1 rounded-full bg-warm-100 p-0.5 shadow-inner shrink-0">
@@ -1274,17 +1319,9 @@ export default function Customer() {
                         ) : (
                           <button
                             onClick={() => addToCartDirect(item)}
-                            className={`shrink-0 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-xs transition active:scale-95 ${
-                              item.is_member_exclusive && !memberData && !localStorage.getItem("mols_customer_member_phone")
-                                ? "bg-gradient-to-r from-purple-800 to-amber-700 text-white hover:from-purple-900 hover:to-amber-800 font-semibold"
-                                : "bg-warm-900 text-white hover:bg-brand hover:text-white active:bg-brand-dark"
-                            }`}
+                            className="shrink-0 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-xs transition active:scale-95 bg-warm-900 text-white hover:bg-brand hover:text-white active:bg-brand-dark"
                           >
-                            <span>
-                              {item.is_member_exclusive && !memberData && !localStorage.getItem("mols_customer_member_phone")
-                                ? "✦ Member Unlock"
-                                : "+ Order"}
-                            </span>
+                            <span>+ Order</span>
                           </button>
                         )}
                       </div>
@@ -1292,9 +1329,9 @@ export default function Customer() {
                       {/* Custom note badge if present */}
                       {(inCart.spice || inCart.notes) && inCart.qty > 0 && (
                         <div
-                          onClick={() => setShowCartDrawer(true)}
+                          onClick={() => openDishCustomizer(item)}
                           className="mt-2 cursor-pointer rounded-lg bg-warm-50 px-2 py-0.5 text-[11px] font-medium text-warm-700 border border-warm-200 truncate flex items-center justify-between"
-                          title="Click to view & customize in Order List"
+                          title="Click to customize preferences"
                         >
                           <span className="truncate">
                             <span className="font-semibold text-brand">Pref:</span>{" "}
@@ -1499,6 +1536,29 @@ export default function Customer() {
         </div>
       )}
 
+      {/* Real-time Added to Order Toast */}
+      {itemAddedToast && (
+        <div className="fixed bottom-24 sm:bottom-20 left-1/2 -translate-x-1/2 z-50 max-w-sm w-[92%] rounded-2xl bg-warm-950 text-white px-4 py-3 shadow-2xl border border-warm-800 flex items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-white truncate">
+              ✓ Added {itemAddedToast.qty}x {itemAddedToast.name}
+            </p>
+            <p className="text-[11px] text-warm-300 font-mono truncate">
+              {itemAddedToast.spice}
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setItemAddedToast(null);
+              setShowCartDrawer(true);
+            }}
+            className="shrink-0 rounded-xl bg-brand px-3 py-1.5 text-xs font-bold text-white hover:bg-brand-dark transition shadow-xs"
+          >
+            Review Order →
+          </button>
+        </div>
+      )}
+
       {/* 2. DISH SHOWCASE MODAL (When tapping card for details) */}
       {activeItemModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-warm-950/60 p-0 sm:p-4 backdrop-blur-xs">
@@ -1541,116 +1601,195 @@ export default function Customer() {
                 )}
               </div>
 
-              {/* Member Exclusivity Banner */}
-              {activeItemModal.is_member_exclusive && (
-                <div className="rounded-2xl bg-gradient-to-r from-purple-900 to-amber-900 text-white p-3.5 border border-amber-400/50 shadow-sm space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider text-amber-300">
-                      ✦ {activeItemModal.promo_badge || "MEMBER EXCLUSIVE PROMOTION"}
-                    </span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-200 border border-amber-400/30">
-                      {activeItemModal.min_member_tier || "Bronze"}+ Tier
-                    </span>
-                  </div>
-                  <p className="text-xs text-amber-100/90 leading-relaxed">
-                    Reserved exclusively for registered MOLS MAISON members.
-                    {activeItemModal.promo_price ? (
-                      <span> Special Member Price: <strong className="text-amber-200 font-mono">{money(activeItemModal.promo_price)}</strong> (Regular: {money(activeItemModal.price)})</span>
-                    ) : null}
-                  </p>
-                </div>
-              )}
+              {/* Preferences Customization: Radio Lists matching user reference style */}
+              {(() => {
+                const config = getItemPreferenceConfig(activeItemModal);
+                const unitPrice = activeItemModal.price;
+                const isAlreadyInCart = (cart[activeItemModal.id]?.qty || 0) > 0;
 
-              {/* Tags & Information */}
-              <div className="flex flex-wrap gap-2 text-xs">
-                {activeItemModal.category && (
-                  <span className="rounded-md bg-warm-100 px-2.5 py-1 text-warm-700 font-medium capitalize">
-                    {activeItemModal.category}
-                  </span>
-                )}
-                {activeItemModal.is_signature && (
-                  <span className="rounded-md bg-amber-50 px-2.5 py-1 text-amber-800 font-medium border border-amber-200">
-                    ⭐ Chef Signature
-                  </span>
-                )}
-                {activeItemModal.is_top_sale && (
-                  <span className="rounded-md bg-rose-50 px-2.5 py-1 text-rose-800 font-medium border border-rose-200">
-                    🔥 Top Selling
-                  </span>
-                )}
-                {activeItemModal.is_vegetarian && (
-                  <span className="rounded-md bg-emerald-50 px-2.5 py-1 text-emerald-800 font-medium border border-emerald-200">
-                    🌱 Vegetarian
-                  </span>
-                )}
-                {activeItemModal.is_gluten_free && (
-                  <span className="rounded-md bg-sky-50 px-2.5 py-1 text-sky-800 font-medium border border-sky-200">
-                    🌾 Gluten-Free
-                  </span>
-                )}
-              </div>
+                return (
+                  <div className="space-y-4 pt-2 border-t border-warm-100">
+                    {/* Radio Preference Pickers */}
+                    {config.type === "drink" ? (
+                      <div className="space-y-3.5">
+                        {/* Ice Level Radio List */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[11px] font-semibold tracking-wider text-warm-500 uppercase">
+                              Ice Level / Temperature
+                            </span>
+                            <span className="text-xs font-mono font-bold text-brand">
+                              {customPrefIce}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Ice Level">
+                            {config.iceOptions.map((opt) => {
+                              const isChecked = customPrefIce === opt;
+                              return (
+                                <button
+                                  key={opt}
+                                  type="button"
+                                  onClick={() => setCustomPrefIce(opt)}
+                                  className={`cursor-pointer inline-flex items-center rounded-full px-3.5 py-1.5 text-xs font-medium transition select-none active:scale-95 ${
+                                    isChecked
+                                      ? "bg-warm-950 text-white shadow-xs border border-warm-950"
+                                      : "bg-white text-warm-700 hover:bg-warm-100 border border-warm-200"
+                                  }`}
+                                >
+                                  <span>{opt}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
 
-              {/* Notice that preferences are customized in order list */}
-              <div className="rounded-2xl bg-warm-50 p-3 border border-warm-200/80 text-xs text-warm-600 space-y-1">
-                <p className="font-medium text-warm-800">
-                  💡 Customize Preferences in Order List:
-                </p>
-                <p className="text-[11px] leading-relaxed text-warm-500">
-                  Preferences (ice, sweetness, spice, meat doneness) can be easily adjusted using the radio list options in your order list at any time before submitting.
-                </p>
-              </div>
+                        {/* Sweetness Radio List */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[11px] font-semibold tracking-wider text-warm-500 uppercase">
+                              Sweetness Level
+                            </span>
+                            <span className="text-xs font-mono font-bold text-brand">
+                              {customPrefSweet}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Sweetness Level">
+                            {config.sweetOptions.map((opt) => {
+                              const isChecked = customPrefSweet === opt;
+                              return (
+                                <button
+                                  key={opt}
+                                  type="button"
+                                  onClick={() => setCustomPrefSweet(opt)}
+                                  className={`cursor-pointer inline-flex items-center rounded-full px-3.5 py-1.5 text-xs font-medium transition select-none active:scale-95 ${
+                                    isChecked
+                                      ? "bg-warm-950 text-white shadow-xs border border-warm-950"
+                                      : "bg-white text-warm-700 hover:bg-warm-100 border border-warm-200"
+                                  }`}
+                                >
+                                  <span>{opt}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Single Preference Group: Doneness, Spice, Preparation, Serving */
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[11px] font-semibold tracking-wider text-warm-500 uppercase">
+                            {config.label}
+                          </span>
+                          <span className="text-xs font-mono font-bold text-brand">
+                            {customPrefOption}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={config.label}>
+                          {config.options.map((opt) => {
+                            const isChecked = customPrefOption === opt;
+                            return (
+                              <button
+                                key={opt}
+                                type="button"
+                                onClick={() => setCustomPrefOption(opt)}
+                                className={`cursor-pointer inline-flex items-center rounded-full px-3.5 py-1.5 text-xs font-medium transition select-none active:scale-95 ${
+                                  isChecked
+                                    ? "bg-warm-950 text-white shadow-xs border border-warm-950"
+                                    : "bg-white text-warm-700 hover:bg-warm-100 border border-warm-200"
+                                }`}
+                              >
+                                <span>{opt}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
 
-              {/* Action Button */}
-              {cart[activeItemModal.id]?.qty > 0 ? (
-                <div className="space-y-2 pt-1">
-                  <div className="flex items-center justify-between rounded-xl bg-warm-100 p-2">
-                    <span className="text-xs font-semibold text-warm-700">In Order List:</span>
-                    <div className="flex items-center gap-2">
+                    {/* Special Instructions */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[11px] font-semibold tracking-wider text-warm-500 uppercase">
+                          Special Instructions
+                        </span>
+                        <span className="text-[10px] text-warm-400">Optional</span>
+                      </div>
+                      <input
+                        type="text"
+                        value={customPrefNotes}
+                        onChange={(e) => setCustomPrefNotes(e.target.value)}
+                        placeholder="e.g. sauce on side, less salty, no onions..."
+                        className="w-full rounded-xl border border-warm-200 bg-warm-50 px-3.5 py-2 text-xs text-warm-900 placeholder-warm-400 outline-none focus:border-warm-900 focus:bg-white transition"
+                      />
+                    </div>
+
+                    {/* Quantity Stepper & Price Calculation */}
+                    <div className="flex items-center justify-between pt-2 border-t border-warm-100">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-warm-500">
+                          Quantity
+                        </span>
+                        <div className="flex items-center gap-1 rounded-full bg-warm-100 p-1 border border-warm-200 shadow-inner">
+                          <button
+                            type="button"
+                            onClick={() => setCustomPrefQty((q) => Math.max(1, q - 1))}
+                            className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm font-bold text-warm-800 shadow-xs hover:bg-warm-200 active:scale-90 transition"
+                            title="Decrease quantity"
+                          >
+                            −
+                          </button>
+                          <span className="w-6 text-center font-mono text-sm font-bold text-warm-900">
+                            {customPrefQty}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setCustomPrefQty((q) => q + 1)}
+                            className="flex h-7 w-7 items-center justify-center rounded-full bg-warm-900 text-sm font-bold text-white shadow-xs hover:bg-brand active:scale-90 transition"
+                            title="Increase quantity"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] text-warm-400 font-mono">Item Total</div>
+                        <div className="font-mono text-base font-bold text-warm-900">
+                          {money(unitPrice * customPrefQty)}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Add / Update CTA */}
+                    <div className="space-y-2 pt-1">
                       <button
                         type="button"
-                        onClick={() => adjustQty(activeItemModal.id, -1)}
-                        className="h-7 w-7 rounded-lg bg-white flex items-center justify-center font-bold text-warm-800 shadow-xs hover:bg-warm-200"
+                        onClick={handleSaveCustomization}
+                        className="w-full rounded-2xl bg-warm-900 py-3.5 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-md hover:bg-brand active:scale-[0.98] transition flex items-center justify-between px-5"
                       >
-                        −
+                        <div className="flex items-center gap-2">
+                          <Icons.Bag />
+                          <span>{isAlreadyInCart ? "Update in Order List" : "Add to Order List"}</span>
+                        </div>
+                        <span className="font-mono font-bold">{money(unitPrice * customPrefQty)}</span>
                       </button>
-                      <span className="font-mono text-sm font-bold text-warm-900 w-6 text-center">
-                        {cart[activeItemModal.id].qty}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => adjustQty(activeItemModal.id, 1)}
-                        className="h-7 w-7 rounded-lg bg-brand text-white flex items-center justify-center font-bold shadow-xs hover:bg-brand-dark"
-                      >
-                        +
-                      </button>
+
+                      {isAlreadyInCart && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            adjustQty(activeItemModal.id, -cart[activeItemModal.id].qty);
+                            setActiveItemModal(null);
+                          }}
+                          className="w-full text-center py-1 text-xs font-medium text-rose-600 hover:text-rose-700 hover:underline transition"
+                        >
+                          Remove from Order List
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveItemModal(null);
-                      setShowCartDrawer(true);
-                    }}
-                    className="w-full rounded-2xl bg-warm-900 py-3 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-md hover:bg-brand transition flex items-center justify-center gap-2"
-                  >
-                    <span>View &amp; Customize in Order List →</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      addToCartDirect(activeItemModal);
-                      setActiveItemModal(null);
-                    }}
-                    className="w-full rounded-2xl bg-brand py-3.5 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-md hover:bg-brand-dark active:scale-[0.98] transition flex items-center justify-center gap-2"
-                  >
-                    <Icons.Bag />
-                    <span>Add to Order List · {money(activeItemModal.price)}</span>
-                  </button>
-                </div>
-              )}
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -1719,22 +1858,20 @@ export default function Customer() {
                               <h4 className="font-display text-xs sm:text-sm font-bold text-warm-900 truncate">
                                 {dish.name}
                               </h4>
-                              {dish.is_member_exclusive && (
-                                <span className="rounded bg-gradient-to-r from-purple-900 to-amber-900 text-amber-200 px-1.5 py-0.2 text-[9px] font-bold border border-amber-400/40">
-                                  {dish.promo_badge || "MEMBER ONLY"}
-                                </span>
-                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowCartDrawer(false);
+                                  openDishCustomizer(dish);
+                                }}
+                                className="text-[10px] text-warm-500 hover:text-brand font-medium underline"
+                                title="Customize preferences in modal"
+                              >
+                                ✎ Edit
+                              </button>
                             </div>
                             <p className="font-mono text-[11px] sm:text-xs text-warm-500">
-                              {dish.is_member_exclusive && dish.promo_price ? (
-                                <span>
-                                  <span className="line-through text-warm-400 mr-1">{money(dish.price)}</span>
-                                  <span className="font-bold text-brand">{money(dish.promo_price)}</span>
-                                </span>
-                              ) : (
-                                money(dish.price)
-                              )}{" "}
-                              each
+                              {money(dish.price)} each
                             </p>
                           </div>
                         </div>
@@ -1764,7 +1901,7 @@ export default function Customer() {
                           </div>
 
                           <span className="w-14 text-right font-mono text-xs sm:text-sm font-bold text-warm-900">
-                            {money(((dish.is_member_exclusive && dish.promo_price > 0) ? dish.promo_price : dish.price) * val.qty)}
+                            {money(dish.price * val.qty)}
                           </span>
 
                           <button
@@ -2146,47 +2283,44 @@ export default function Customer() {
               ) : null}
             </div>
 
-            <div className="space-y-2 pt-1 text-left">
+            <div className="space-y-2.5 pt-1 text-left">
               <label className="block text-xs font-semibold text-warm-800">
-                Enter your Member Phone Number:
+                Verify Member Account (Number &amp; Password):
               </label>
-              <div className="flex gap-2">
+              <div className="space-y-2">
                 <input
-                  type="tel"
-                  placeholder="e.g. 08123456789"
-                  value={memberPhoneInput}
+                  type="text"
+                  placeholder="Membership # or Phone (e.g. 08112233445)"
+                  value={memberNumberInput}
                   onChange={(e) => {
-                    setMemberPhoneInput(e.target.value);
+                    setMemberNumberInput(e.target.value);
                     setMemberError("");
                   }}
-                  className="flex-1 rounded-xl border border-warm-300 bg-warm-50 px-3 py-2 text-xs font-mono outline-none focus:border-brand focus:bg-white"
+                  className="w-full rounded-xl border border-warm-300 bg-warm-50 px-3 py-2 text-xs font-mono outline-none focus:border-brand focus:bg-white"
+                />
+                <input
+                  type="password"
+                  placeholder="Password or PIN (default: 1234)"
+                  value={memberPasswordInput}
+                  onChange={(e) => {
+                    setMemberPasswordInput(e.target.value);
+                    setMemberError("");
+                  }}
+                  className="w-full rounded-xl border border-warm-300 bg-warm-50 px-3 py-2 text-xs font-mono outline-none focus:border-brand focus:bg-white"
                 />
                 <button
                   type="button"
                   disabled={memberLoading}
                   onClick={async () => {
-                    if (!memberPhoneInput.trim()) {
-                      setMemberError("Please enter your registered phone number.");
-                      return;
-                    }
-                    try {
-                      setMemberLoading(true);
-                      const res = await api(`/members/lookup?phone=${encodeURIComponent(memberPhoneInput.trim())}`);
-                      setMemberData(res);
-                      localStorage.setItem("mols_customer_member_phone", memberPhoneInput.trim());
-                      // Automatically add the dish!
+                    const res = await verifyMember();
+                    if (res && exclusivePromptDish) {
                       addToCartDirect(exclusivePromptDish, res);
                       setExclusivePromptDish(null);
-                      alert(`Welcome, ${res.name}! "${exclusivePromptDish.name}" has been unlocked and added to your order.`);
-                    } catch (e) {
-                      setMemberError("Phone not found. You can register for free below in 10 seconds!");
-                    } finally {
-                      setMemberLoading(false);
                     }
                   }}
-                  className="rounded-xl bg-warm-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-brand transition shrink-0 disabled:opacity-50"
+                  className="w-full rounded-xl bg-warm-900 px-3.5 py-2.5 text-xs font-semibold text-white hover:bg-brand transition shrink-0 disabled:opacity-50"
                 >
-                  {memberLoading ? "Verifying..." : "Unlock"}
+                  {memberLoading ? "Verifying..." : "Verify & Unlock"}
                 </button>
               </div>
               {memberError && (
@@ -2263,41 +2397,68 @@ export default function Customer() {
                           Check Your Membership Status
                         </h4>
                         <p className="mt-1 text-xs text-warm-500 max-w-xs mx-auto">
-                          Enter your registered phone number to view your rewards balance, dining perks, and tier progress.
+                          Enter your membership number or phone, and your password to view your rewards balance, tier perks, and points.
                         </p>
                       </div>
 
                       {memberError && (
-                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 font-medium">
+                        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-900 font-medium">
                           {memberError}
                         </div>
                       )}
 
-                      <div className="space-y-2">
-                        <label className="block text-xs font-semibold text-warm-700 uppercase tracking-wide">
-                          Phone Number
-                        </label>
-                        <div className="flex gap-2">
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          verifyMember();
+                        }}
+                        className="space-y-3"
+                      >
+                        <div className="space-y-1">
+                          <label className="block text-xs font-semibold text-warm-700 uppercase tracking-wide">
+                            Membership Number or Phone
+                          </label>
                           <input
-                            type="tel"
-                            placeholder="e.g. 08123456789"
-                            value={memberPhoneInput}
-                            onChange={(e) => setMemberPhoneInput(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") lookupMember();
+                            type="text"
+                            required
+                            placeholder="e.g. #0001 or 08112233445"
+                            value={memberNumberInput}
+                            onChange={(e) => {
+                              setMemberNumberInput(e.target.value);
+                              setMemberError("");
                             }}
-                            className={inp + " flex-1 font-mono text-sm"}
+                            className={inp + " w-full font-mono text-sm"}
                           />
-                          <button
-                            type="button"
-                            onClick={() => lookupMember()}
-                            disabled={memberLoading}
-                            className="rounded-xl bg-warm-900 px-4 py-2 font-display text-xs font-semibold text-white shadow-xs hover:bg-brand transition"
-                          >
-                            {memberLoading ? "Checking..." : "Look Up"}
-                          </button>
                         </div>
-                      </div>
+
+                        <div className="space-y-1">
+                          <label className="block text-xs font-semibold text-warm-700 uppercase tracking-wide">
+                            Password or PIN
+                          </label>
+                          <input
+                            type="password"
+                            required
+                            placeholder="Enter your password or PIN"
+                            value={memberPasswordInput}
+                            onChange={(e) => {
+                              setMemberPasswordInput(e.target.value);
+                              setMemberError("");
+                            }}
+                            className={inp + " w-full font-mono text-sm"}
+                          />
+                          <p className="text-[10px] text-warm-400 font-mono">
+                            ★ Default PIN for sample members (Samantha, Alice, David): 1234
+                          </p>
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={memberLoading}
+                          className="w-full rounded-xl bg-warm-900 py-3 font-display text-xs sm:text-sm font-bold text-white shadow-xs hover:bg-brand transition disabled:opacity-50"
+                        >
+                          {memberLoading ? "Checking..." : "Verify & Check Status"}
+                        </button>
+                      </form>
 
                       <div className="pt-3 border-t border-warm-100 text-center">
                         <p className="text-xs text-warm-500">Not a member yet?</p>
@@ -2353,6 +2514,22 @@ export default function Customer() {
                           value={customerRegisterForm.phone}
                           onChange={(e) =>
                             setCustomerRegisterForm({ ...customerRegisterForm, phone: e.target.value })
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-warm-700 mb-1">
+                          Create Password or PIN
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          placeholder="Choose at least 4 digits or characters"
+                          className={inp + " w-full font-mono text-sm"}
+                          value={customerRegisterForm.password}
+                          onChange={(e) =>
+                            setCustomerRegisterForm({ ...customerRegisterForm, password: e.target.value })
                           }
                         />
                       </div>
@@ -2507,17 +2684,19 @@ export default function Customer() {
                   </div>
 
                   {/* Switch Member Account Action */}
-                  <div className="pt-1 text-center">
+                  <div className="pt-2 text-center">
                     <button
                       type="button"
                       onClick={() => {
                         setMemberData(null);
-                        setMemberPhoneInput("");
+                        setMemberNumberInput("");
+                        setMemberPasswordInput("");
                         localStorage.removeItem("mols_customer_member_phone");
+                        localStorage.removeItem("mols_customer_member_number");
                       }}
-                      className="text-xs text-warm-500 hover:text-warm-800 underline font-mono"
+                      className="rounded-xl border border-warm-300 bg-warm-50 px-4 py-2 text-xs font-semibold text-warm-700 hover:bg-warm-100 hover:text-warm-900 transition"
                     >
-                      Check a different phone number
+                      Sign Out / Switch Member Account
                     </button>
                   </div>
                 </div>
