@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { api, money, inp, timeStr, ago, formatImageUrl } from '../lib'
 import { Icons } from './Icons'
@@ -132,11 +132,11 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
     return Math.round(((remaining * selectedMember.discount_percent) / 100) * 100) / 100
   }, [selectedMember, memberDiscountActive, subtotal, memberPromoDiscountAmount, manualDiscountAmount])
 
-  // Points redemption discount ($0.05 per point, e.g. 100 pts = $5.00)
+  // Points redemption discount (100 pts = $1.00 USD, minimum 200 pts)
   const pointsDiscountAmount = useMemo(() => {
     if (!selectedMember || !pointsToRedeem) return 0
     const remaining = Math.max(0, subtotal - memberPromoDiscountAmount - manualDiscountAmount - memberDiscountAmount)
-    return Math.min(remaining, Math.round(pointsToRedeem * 0.05 * 100) / 100)
+    return Math.min(remaining, Math.round((pointsToRedeem / 100) * 100) / 100)
   }, [selectedMember, pointsToRedeem, subtotal, memberPromoDiscountAmount, manualDiscountAmount, memberDiscountAmount])
 
   const totalDiscount = useMemo(() => {
@@ -149,12 +149,12 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
     return Math.max(0, Math.round((subtotal - totalDiscount) * 100) / 100)
   }, [subtotal, totalDiscount])
 
-  // Points to be earned on this order
+  // Points to be earned on this order (Bronze 1x, Silver 1.25x, Gold 1.5x, VIP 2x)
   const pointsToEarn = useMemo(() => {
     if (!selectedMember) return Math.round(finalTotal)
     const mult = selectedMember.tier_code === 'vip' ? 2.0 :
       selectedMember.tier_code === 'gold' ? 1.5 :
-      selectedMember.tier_code === 'silver' ? 1.2 : 1.0
+      selectedMember.tier_code === 'silver' ? 1.25 : 1.0
     return Math.round(finalTotal * mult)
   }, [selectedMember, finalTotal])
 
@@ -202,6 +202,55 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
     })
   }, [menu, dishCategory, dishSearch])
 
+  const lastTableRef = useRef(null)
+  const manualMemberOverrideRef = useRef(false)
+
+  // Auto-detect & sync linked table member from customer QR login
+  useEffect(() => {
+    const tableChanged = lastTableRef.current !== selectedTable
+    lastTableRef.current = selectedTable
+
+    if (!selectedTable) {
+      setSelectedMember(null)
+      setMemberQuery('')
+      setPointsToRedeem(0)
+      manualMemberOverrideRef.current = false
+      return
+    }
+
+    const tableObj = (tables || []).find((t) => t.number === selectedTable)
+    const orderWithMember = (orders || []).find((o) => o.table === selectedTable && o.member)
+    const tableMember = tableObj?.member || orderWithMember?.member
+
+    if (tableChanged) {
+      manualMemberOverrideRef.current = false
+      if (tableMember) {
+        setSelectedMember(tableMember)
+        setMemberQuery(`${tableMember.name || tableMember.full_name} (${tableMember.phone})`)
+        setMemberDiscountActive(true)
+        setPointsToRedeem(0)
+      } else {
+        setSelectedMember(null)
+        setMemberQuery('')
+        setPointsToRedeem(0)
+      }
+    } else if (tableMember && !manualMemberOverrideRef.current && (!selectedMember || selectedMember.id !== tableMember.id)) {
+      // Customer at this table just logged in via QR!
+      setSelectedMember(tableMember)
+      setMemberQuery(`${tableMember.name || tableMember.full_name} (${tableMember.phone})`)
+      setMemberDiscountActive(true)
+      setPointsToRedeem(0)
+    }
+  }, [selectedTable, tables, orders, selectedMember])
+
+  const isTableMemberSynced = useMemo(() => {
+    if (!selectedMember || !selectedTable) return false
+    const tableObj = (tables || []).find((t) => t.number === selectedTable)
+    const orderWithMember = (orders || []).find((o) => o.table === selectedTable && o.member)
+    const tm = tableObj?.member || orderWithMember?.member
+    return Boolean(tm && (tm.id === selectedMember.id || tm.phone === selectedMember.phone))
+  }, [selectedMember, selectedTable, tables, orders])
+
   // Member Search & Selection
   const handleSearchMember = async (val) => {
     setMemberQuery(val)
@@ -221,14 +270,16 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
   }
 
   const handleSelectMember = (mem) => {
+    manualMemberOverrideRef.current = true
     setSelectedMember(mem)
-    setMemberQuery(`${mem.name} (${mem.phone})`)
+    setMemberQuery(`${mem.name || mem.full_name} (${mem.phone})`)
     setMemberSuggestions([])
     setPointsToRedeem(0)
     setMemberDiscountActive(true)
   }
 
   const handleClearMember = () => {
+    manualMemberOverrideRef.current = true
     setSelectedMember(null)
     setMemberQuery('')
     setMemberSuggestions([])
@@ -386,6 +437,41 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
     }
   }
 
+  // Cancel entire table order and remove all items
+  const handleCancelWholeOrder = async () => {
+    if (!selectedTable || processing) return
+    const ok = await confirmDialog({
+      title: `Cancel Entire Order for Table #${selectedTable}?`,
+      message: `Are you sure you want to cancel the entire order for Table #${selectedTable}? This will remove all ${allActiveItems.length} active dish(es) and reset Table #${selectedTable} to available.`,
+      confirmText: 'Yes, Cancel Order & Remove All Items',
+      cancelText: 'Keep Order',
+      type: 'danger',
+    })
+    if (!ok) return
+
+    setProcessing(true)
+    try {
+      const res = await api(`/staff/tables/${selectedTable}/cancel-order`, {
+        method: 'POST',
+        body: { reason: 'Cancelled by Cashier' },
+      })
+      alert(res.message || `Order for Table #${selectedTable} has been completely cancelled.`)
+      setSelectedTable(null)
+      setSelectedMember(null)
+      setMemberQuery('')
+      setPointsToRedeem(0)
+      setDiscountPercent(0)
+      setCustomDiscountVal('')
+      setCashTendered('')
+      setCashError('')
+      reload()
+    } catch (err) {
+      alert(err.message || 'Failed to cancel order')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
   // Add Dishes to Table from Modal
   const handleDraftQty = (menuItem, delta) => {
     setDraftOrderItems((prev) => {
@@ -534,6 +620,13 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                     </span>
                   </div>
 
+                  {t.member && (
+                    <div className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/80 truncate">
+                      <span>⭐</span>
+                      <span className="truncate">{t.member.name || t.member.full_name} ({t.member.tier})</span>
+                    </div>
+                  )}
+
                   {t.merged_with && (
                     <div className="mt-1.5 flex items-center justify-between text-[10px] font-medium text-purple-800 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
                       <span>Linked to #{t.merged_with}</span>
@@ -611,6 +704,20 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                     <span>+</span>
                     <span>Add Dish</span>
                   </button>
+                  {allActiveItems.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleCancelWholeOrder}
+                      disabled={processing}
+                      className="flex items-center gap-1 rounded-xl bg-rose-50 border border-rose-200 px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-600 hover:text-white hover:border-rose-600 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                      title="Cancel entire order and remove all items"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      <span>Cancel Order</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => setSelectedTable(null)}
                     className="rounded-lg p-1.5 text-warm-400 hover:bg-warm-100 text-xs"
@@ -671,17 +778,30 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                   {/* Itemized active items with Quantity Controls & Remove */}
                   <div>
                     <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-warm-600 mb-1.5">
-                      <span>Table Dishes</span>
-                      <button
-                        onClick={() => {
-                          setDraftOrderItems({})
-                          setDishSearch('')
-                          setShowAddDishModal(true)
-                        }}
-                        className="text-brand font-semibold text-xs hover:underline flex items-center gap-0.5"
-                      >
-                        <span>+ Add More</span>
-                      </button>
+                      <span>Table Dishes ({allActiveItems.length})</span>
+                      <div className="flex items-center gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDraftOrderItems({})
+                            setDishSearch('')
+                            setShowAddDishModal(true)
+                          }}
+                          className="text-brand font-semibold text-xs hover:underline flex items-center gap-0.5"
+                        >
+                          <span>+ Add More</span>
+                        </button>
+                        <span className="text-warm-300">·</span>
+                        <button
+                          type="button"
+                          onClick={handleCancelWholeOrder}
+                          disabled={processing}
+                          className="text-rose-600 hover:text-rose-800 hover:underline font-semibold text-xs flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                          title="Cancel entire order and remove all items"
+                        >
+                          <span>Cancel Entire Order</span>
+                        </button>
+                      </div>
                     </div>
                     <div className="max-h-56 overflow-y-auto space-y-2 divide-y divide-warm-100 pr-1">
                       {allActiveItems.map((it) => (
@@ -911,7 +1031,15 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                               ⭐
                             </span>
                             <div>
-                              <div className="font-display font-bold text-warm-900 text-sm">{selectedMember.name}</div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-display font-bold text-warm-900 text-sm">{selectedMember.name || selectedMember.full_name}</span>
+                                {isTableMemberSynced && (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 text-[10px] font-bold border border-emerald-300">
+                                    <Icons.Check className="w-3 h-3 text-emerald-600" />
+                                    Auto-synced from Table QR
+                                  </span>
+                                )}
+                              </div>
                               <div className="font-mono text-[11px] text-warm-600">{selectedMember.phone}</div>
                             </div>
                           </div>
@@ -939,15 +1067,42 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                         <div className="grid grid-cols-2 gap-2 pt-1 border-t border-amber-200/60 font-mono text-[11px]">
                           <div>
                             <span className="text-warm-500">Available Points:</span>
-                            <p className="font-bold text-amber-900">{selectedMember.points} pts (~{money(selectedMember.points * 0.05)})</p>
+                            <p className="font-bold text-amber-900">{selectedMember.points} pts (~{money(selectedMember.points / 100)})</p>
                           </div>
                           <div>
                             <span className="text-warm-500">Tier Perk:</span>
                             <p className="font-bold text-emerald-800">
-                              {selectedMember.discount_percent > 0 ? `${selectedMember.discount_percent}% Discount` : '1 pt / $1 spent'}
+                              {selectedMember.discount_percent > 0 ? `${selectedMember.discount_percent}% Discount (${selectedMember.tier})` : '1x pt per $1 spent'}
                             </p>
                           </div>
                         </div>
+
+                        {/* Paid Annual Membership (Maison Privé) Badge */}
+                        {selectedMember.membership?.is_prive && (
+                          <div className="rounded-xl bg-gradient-to-r from-purple-900 to-indigo-900 p-2 text-white flex items-center justify-between shadow-xs">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm">👑</span>
+                              <div>
+                                <p className="font-bold text-[11px] tracking-wide">Maison Privé Member</p>
+                                <p className="text-[9px] text-purple-200">Priority Concierge &amp; Welcome Drinks</p>
+                              </div>
+                            </div>
+                            <span className="text-[10px] font-mono text-purple-200 uppercase bg-purple-800/80 px-2 py-0.5 rounded-full border border-purple-600/50">
+                              Active
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Birthday Month Notice */}
+                        {selectedMember.birthday_info?.is_birthday_month && (
+                          <div className="rounded-xl bg-amber-50 border border-amber-300 p-2 text-[11px] text-amber-900 flex items-center gap-2">
+                            <span>🎂</span>
+                            <div>
+                              <span className="font-bold">Birthday Month: </span>
+                              <span>{selectedMember.birthday_info?.available_reward?.description || 'Complimentary Birthday Dessert available!'}</span>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Member Tier Discount Toggle */}
                         {selectedMember.discount_percent > 0 && (
@@ -982,12 +1137,12 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                           </div>
                         )}
 
-                        {/* Redeem Points Option */}
-                        {selectedMember.points >= 50 && (
+                        {/* Redeem Points Option (Min 200 pts) */}
+                        {selectedMember.points >= 200 && (
                           <div className="pt-1 border-t border-amber-200/60 flex items-center justify-between text-xs">
                             <span className="font-medium text-warm-700">Redeem Points:</span>
-                            <div className="flex gap-1.5">
-                              {[0, 50, 100, 200].filter(pts => pts === 0 || pts <= selectedMember.points).map(pts => (
+                            <div className="flex flex-wrap gap-1.5 justify-end">
+                              {[0, 200, 500, 1000, 2000].filter(pts => pts === 0 || pts <= selectedMember.points).map(pts => (
                                 <button
                                   key={pts}
                                   type="button"
@@ -998,7 +1153,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                                       : 'bg-white border border-amber-300 text-amber-900 hover:bg-amber-100'
                                   }`}
                                 >
-                                  {pts === 0 ? 'None' : `-${money(pts * 0.05)} (${pts}p)`}
+                                  {pts === 0 ? 'None' : `-${money(pts / 100)} (${pts}p)`}
                                 </button>
                               ))}
                             </div>
@@ -1493,10 +1648,27 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                   <span>✦ Member</span>
                   <span>{lastSettlement.member.tier} Tier</span>
                 </div>
+                {(lastSettlement.member.membership?.is_prive || lastSettlement.member.is_maison_prive) && (
+                  <div className="flex justify-between text-[10px] font-bold text-black">
+                    <span>👑 Annual Plan</span>
+                    <span>Maison Privé</span>
+                  </div>
+                )}
+                {lastSettlement.member.tier_upgraded && (
+                  <div className="text-[10px] font-bold text-center py-0.5 border border-dashed border-black rounded my-0.5">
+                    ★ TIER UPGRADE: Elevated to {lastSettlement.member.tier}! ★
+                  </div>
+                )}
                 <div className="flex justify-between text-[10px]">
                   <span>Points Earned Today</span>
                   <span className="font-bold">+{lastSettlement.member.points_earned_this_visit || 0} pts</span>
                 </div>
+                {lastSettlement.member.points_redeemed_this_visit > 0 && (
+                  <div className="flex justify-between text-[10px]">
+                    <span>Points Redeemed Today</span>
+                    <span className="font-bold">-{lastSettlement.member.points_redeemed_this_visit} pts</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-[10px]">
                   <span>Current Total Balance</span>
                   <span className="font-bold">{lastSettlement.member.points} pts</span>

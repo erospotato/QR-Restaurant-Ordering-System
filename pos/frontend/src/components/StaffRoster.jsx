@@ -307,7 +307,7 @@ export default function StaffRoster({ currentUserId, reload = () => {} }) {
                       onClick={() => openEdit(u)}
                       className="rounded-xl border border-warm-300 bg-white px-3 py-1.5 text-xs font-semibold text-warm-700 hover:bg-warm-100 hover:text-warm-950 hover:border-warm-400 active:bg-warm-200 transition shadow-xs cursor-pointer flex items-center gap-1.5"
                     >
-                      <span>✏️</span>
+                  
                       <span>Edit</span>
                     </button>
 
@@ -321,7 +321,7 @@ export default function StaffRoster({ currentUserId, reload = () => {} }) {
                         onClick={() => handleDelete(u)}
                         className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 hover:text-rose-900 hover:border-rose-300 active:bg-rose-200 transition shadow-xs cursor-pointer flex items-center gap-1.5"
                       >
-                        <span>🗑️</span>
+                       
                         <span>Delete</span>
                       </button>
                     )}
@@ -424,11 +424,11 @@ export default function StaffRoster({ currentUserId, reload = () => {} }) {
                     onChange={(e) => setFormAdd({ ...formAdd, role: e.target.value })}
                     className={inp + ' text-xs sm:text-sm font-semibold w-full'}
                   >
-                    <option value="kitchen">🍳 Kitchen Staff (KDS)</option>
-                    <option value="cashier">💳 Cashier (POS)</option>
-                    <option value="manager">📋 Floor Manager</option>
-                    <option value="owner">👑 Restaurant Owner</option>
-                    <option value="admin">⚙️ Admin</option>
+                    <option value="kitchen">Kitchen Staff (KDS)</option>
+                    <option value="cashier">Cashier (POS)</option>
+                    <option value="manager">Floor Manager</option>
+                    <option value="owner">Restaurant Owner</option>
+                    <option value="admin">Admin</option>
                   </select>
                 </div>
               </div>
@@ -532,11 +532,11 @@ export default function StaffRoster({ currentUserId, reload = () => {} }) {
                     onChange={(e) => setFormEdit({ ...formEdit, role: e.target.value })}
                     className={inp + ' text-xs sm:text-sm font-semibold w-full'}
                   >
-                    <option value="kitchen">🍳 Kitchen Staff (KDS)</option>
-                    <option value="cashier">💳 Cashier (POS)</option>
-                    <option value="manager">📋 Floor Manager</option>
-                    <option value="owner">👑 Restaurant Owner</option>
-                    <option value="admin">⚙️ Admin</option>
+                    <option value="kitchen">Kitchen Staff (KDS)</option>
+                    <option value="cashier">Cashier (POS)</option>
+                    <option value="manager">Floor Manager</option>
+                    <option value="owner">Restaurant Owner</option>
+                    <option value="admin">Admin</option>
                   </select>
                 </div>
 

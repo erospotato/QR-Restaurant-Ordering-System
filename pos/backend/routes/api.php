@@ -1,5 +1,5 @@
 <?php
-use App\Http\Controllers\{AuthController, IngredientController, MemberController, MenuController, OrderController, StaffUserController, TableController};
+use App\Http\Controllers\{AuthController, CustomerController, IngredientController, LoyaltyController, MemberController, MenuController, OrderController, StaffUserController, TableController};
 use App\Http\Middleware\EnsureRole;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
@@ -10,16 +10,34 @@ Route::get('/menu', [MenuController::class, 'index']);
 Route::get('/tables/scan/{number}', [TableController::class, 'scan']);
 Route::get('/tables/{token}', [TableController::class, 'show']);
 Route::get('/tables/{token}/orders', [TableController::class, 'orders']);
+Route::post('/tables/{token}/link-member', [TableController::class, 'linkMember']);
+Route::post('/tables/{token}/unlink-member', [TableController::class, 'unlinkMember']);
 Route::post('/tables/{token}/call-waiter', [TableController::class, 'callService']);
 Route::post('/orders', [OrderController::class, 'store']);
 Route::get('/network-info', [TableController::class, 'networkInfo']);
 
-// Public Customer Loyalty & Membership Lookup / Registration
+// Public Customer Loyalty, Membership & Rewards
 Route::get('/members/lookup', [MemberController::class, 'lookup']);
 Route::post('/members/lookup', [MemberController::class, 'lookup']);
 Route::post('/members/verify', [MemberController::class, 'verify']);
 Route::post('/members/register', [MemberController::class, 'register']);
 Route::get('/members/{phone}', [MemberController::class, 'lookup']);
+
+// Customer & Loyalty API Specification Endpoints
+Route::post('/customers', [CustomerController::class, 'store']);
+Route::post('/customers/verify', [CustomerController::class, 'verify']);
+Route::get('/customers/{id}', [CustomerController::class, 'show']);
+Route::put('/customers/{id}', [CustomerController::class, 'update']);
+Route::get('/customers/{id}/loyalty', [CustomerController::class, 'loyaltySummary']);
+Route::get('/customers/{id}/transactions', [CustomerController::class, 'transactions']);
+Route::get('/customers/{id}/rewards', [CustomerController::class, 'rewards']);
+Route::post('/customers/{id}/redeem', [CustomerController::class, 'redeem']);
+Route::get('/loyalty/tiers', [LoyaltyController::class, 'getTiers']);
+Route::get('/loyalty/rewards', [LoyaltyController::class, 'getRewards']);
+Route::get('/memberships/plans', [LoyaltyController::class, 'getPlans']);
+Route::post('/memberships/subscribe', [LoyaltyController::class, 'subscribe']);
+Route::get('/memberships/{customerId}', [LoyaltyController::class, 'getCustomerMembership']);
+Route::get('/loyalty/statistics', [LoyaltyController::class, 'statistics']);
 
 // Websocket auth for private "staff" channel
 Broadcast::routes(['middleware' => ['auth:sanctum']]);
@@ -51,17 +69,25 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/tables/{number}/pay', [TableController::class, 'pay']);
         Route::post('/staff/tables/{number}/add-items', [TableController::class, 'addItem']);
         Route::post('/staff/tables/{number}/remove-item', [TableController::class, 'removeItem']);
+        Route::post('/staff/tables/{number}/cancel-order', [TableController::class, 'cancelOrder']);
         Route::post('/staff/tables/move', [TableController::class, 'move']);
         Route::post('/staff/tables/merge', [TableController::class, 'merge']);
         Route::post('/staff/tables/unmerge', [TableController::class, 'unmerge']);
         Route::post('/tables/{number}/rotate', [TableController::class, 'rotate']);
 
         // VIP Customers & Membership Management (Owner, Manager, Admin, Cashier)
+        Route::get('/customers', [CustomerController::class, 'index']);
         Route::get('/staff/members', [MemberController::class, 'index']);
         Route::get('/staff/members/search', [MemberController::class, 'search']);
         Route::get('/staff/members/lookup', [MemberController::class, 'lookup']);
         Route::get('/staff/members/{id}', [MemberController::class, 'show']);
         Route::post('/staff/members', [MemberController::class, 'register']);
+
+        // Loyalty & Rewards Management
+        Route::post('/loyalty/rewards', [LoyaltyController::class, 'createReward']);
+        Route::put('/loyalty/rewards/{id}', [LoyaltyController::class, 'updateReward']);
+        Route::post('/loyalty/adjust-points', [LoyaltyController::class, 'adjustPoints']);
+        Route::post('/loyalty/settings', [LoyaltyController::class, 'updateSettings']);
     });
 
     // Manager (and Owner + Admin): Table creation, Menu Admin, Inventory Admin & Sales

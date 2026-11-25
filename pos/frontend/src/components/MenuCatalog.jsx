@@ -90,7 +90,7 @@ export default function MenuCatalog({ menu = [], reload = () => {} }) {
               setEditingItem(null)
               setShowAdd(true)
             }}
-            className="rounded-xl bg-gradient-to-r from-purple-800 to-amber-700 px-3.5 py-2 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:from-purple-900 hover:to-amber-800 active:scale-95 transition flex items-center gap-1.5"
+            className="rounded-xl bg-brand px-3.5 py-2 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:from-purple-900 hover:to-amber-800 active:scale-95 transition flex items-center gap-1.5"
           >
             <span>✦ Add Promo Item</span>
           </button>
@@ -99,7 +99,7 @@ export default function MenuCatalog({ menu = [], reload = () => {} }) {
               setEditingItem(null)
               setShowAdd(true)
             }}
-            className="rounded-xl bg-warm-900 px-3.5 py-2 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand active:scale-95 transition"
+            className="rounded-xl bg-brand px-3.5 py-2 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand active:scale-95 transition"
           >
             + Add Standard Dish
           </button>

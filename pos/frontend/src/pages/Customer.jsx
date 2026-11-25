@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   api,
@@ -351,6 +351,89 @@ export default function Customer() {
   const [customPrefQty, setCustomPrefQty] = useState(1);
   const [itemAddedToast, setItemAddedToast] = useState(null);
 
+  // Responsive Bottom Sheet Drag / Pull Handle Bar State
+  const [sheetDragY, setSheetDragY] = useState(0);
+  const [isDraggingSheet, setIsDraggingSheet] = useState(false);
+  const [sheetExpanded, setSheetExpanded] = useState(false);
+  const dragStartYRef = useRef(0);
+  const currentDeltaRef = useRef(0);
+
+  const handleSheetTouchStart = (e) => {
+    setIsDraggingSheet(true);
+    dragStartYRef.current = e.touches[0].clientY;
+    currentDeltaRef.current = 0;
+  };
+
+  const handleSheetTouchMove = (e) => {
+    const clientY = e.touches[0].clientY;
+    const deltaY = clientY - dragStartYRef.current;
+    currentDeltaRef.current = deltaY;
+    if (deltaY < 0) {
+      setSheetDragY(deltaY * 0.4);
+    } else {
+      setSheetDragY(deltaY);
+    }
+  };
+
+  const handleSheetTouchEnd = () => {
+    setIsDraggingSheet(false);
+    const delta = currentDeltaRef.current;
+    if (delta > 115) {
+      setActiveItemModal(null);
+      setSheetExpanded(false);
+    } else if (delta < -30) {
+      setSheetExpanded(true);
+    } else if (delta > 35 && sheetExpanded) {
+      setSheetExpanded(false);
+    }
+    setSheetDragY(0);
+    currentDeltaRef.current = 0;
+  };
+
+  const handleSheetMouseDown = (e) => {
+    e.preventDefault();
+    setIsDraggingSheet(true);
+    const startY = e.clientY;
+    dragStartYRef.current = startY;
+    currentDeltaRef.current = 0;
+
+    const onMouseMove = (moveEvent) => {
+      const deltaY = moveEvent.clientY - startY;
+      currentDeltaRef.current = deltaY;
+      if (deltaY < 0) {
+        setSheetDragY(deltaY * 0.4);
+      } else {
+        setSheetDragY(deltaY);
+      }
+    };
+
+    const onMouseUp = (upEvent) => {
+      setIsDraggingSheet(false);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      const delta = upEvent.clientY - startY;
+      if (delta > 115) {
+        setActiveItemModal(null);
+        setSheetExpanded(false);
+      } else if (delta < -30) {
+        setSheetExpanded(true);
+      } else if (delta > 35 && sheetExpanded) {
+        setSheetExpanded(false);
+      }
+      setSheetDragY(0);
+      currentDeltaRef.current = 0;
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  };
+
+  const handleHandleBarClick = () => {
+    if (Math.abs(currentDeltaRef.current) < 5) {
+      setSheetExpanded((prev) => !prev);
+    }
+  };
+
   const [showCartDrawer, setShowCartDrawer] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showCallStaffModal, setShowCallStaffModal] = useState(false);
@@ -358,6 +441,10 @@ export default function Customer() {
 
   // Membership & Rewards State for Customer
   const [showMemberModal, setShowMemberModal] = useState(false);
+  const [activeMemberTab, setActiveMemberTab] = useState("profile"); // "profile" | "prive" | "rewards" | "history"
+  const [customerRewardsData, setCustomerRewardsData] = useState(null);
+  const [customerTxData, setCustomerTxData] = useState([]);
+  const [loyaltyActionLoading, setLoyaltyActionLoading] = useState(false);
   const [memberNumberInput, setMemberNumberInput] = useState(() => localStorage.getItem("mols_customer_member_number") || "");
   const [memberPasswordInput, setMemberPasswordInput] = useState("");
   const [memberData, setMemberData] = useState(null);
@@ -366,6 +453,67 @@ export default function Customer() {
   const [showRegisterInCustomer, setShowRegisterInCustomer] = useState(false);
   const [customerRegisterForm, setCustomerRegisterForm] = useState({ name: "", phone: "", email: "", password: "" });
   const [customerRegisterLoading, setCustomerRegisterLoading] = useState(false);
+
+  const fetchCustomerLoyaltyDetails = useCallback(async (customerId) => {
+    if (!customerId) return;
+    try {
+      const [rw, tx] = await Promise.all([
+        api(`/customers/${customerId}/rewards`),
+        api(`/customers/${customerId}/transactions`),
+      ]);
+      setCustomerRewardsData(rw);
+      setCustomerTxData(tx?.transactions || []);
+    } catch (err) {
+      console.warn("Could not load customer loyalty details:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (memberData?.id && showMemberModal) {
+      fetchCustomerLoyaltyDetails(memberData.id);
+    }
+  }, [memberData?.id, showMemberModal, fetchCustomerLoyaltyDetails]);
+
+  const handleRedeemReward = async (rewardId) => {
+    if (!memberData?.id) return;
+    setLoyaltyActionLoading(true);
+    try {
+      const res = await api(`/customers/${memberData.id}/redeem`, {
+        method: "POST",
+        body: { reward_id: rewardId },
+      });
+      alert(res.message || "Reward redeemed successfully!");
+      const updated = await api(`/customers/${memberData.id}`);
+      setMemberData(updated);
+      fetchCustomerLoyaltyDetails(memberData.id);
+    } catch (err) {
+      alert(err.message || "Failed to redeem reward.");
+    } finally {
+      setLoyaltyActionLoading(false);
+    }
+  };
+
+  const handleSubscribeMaisonPrive = async () => {
+    if (!memberData?.id) return;
+    if (!window.confirm("Join Maison Privé for $49.99/year to enjoy VIP table reservations, complimentary welcome drink, birthday dessert & seasonal menus?")) {
+      return;
+    }
+    setLoyaltyActionLoading(true);
+    try {
+      const res = await api(`/memberships/subscribe`, {
+        method: "POST",
+        body: { customer_id: memberData.id, amount_paid: 49.99 },
+      });
+      alert(res.message || "Welcome to Maison Privé!");
+      const updated = await api(`/customers/${memberData.id}`);
+      setMemberData(updated);
+      fetchCustomerLoyaltyDetails(memberData.id);
+    } catch (err) {
+      alert(err.message || "Failed to subscribe to Maison Privé.");
+    } finally {
+      setLoyaltyActionLoading(false);
+    }
+  };
 
   // Verify member credentials requiring BOTH membership number/phone AND password
   const verifyMember = useCallback(async (numToVerify, passToVerify) => {
@@ -396,6 +544,19 @@ export default function Customer() {
       localStorage.setItem("mols_customer_member_number", targetNum.trim());
       localStorage.setItem("mols_customer_member_phone", member.phone);
       setMemberPasswordInput("");
+
+      // Auto-sync customer membership to cashier POS for this table session
+      if (token && member?.id) {
+        try {
+          await api(`/tables/${token}/link-member`, {
+            method: "POST",
+            body: { customer_id: member.id },
+          });
+        } catch (linkErr) {
+          console.warn("Table member auto-sync warning:", linkErr);
+        }
+      }
+
       return member;
     } catch (err) {
       setMemberError(err.message || "Invalid membership number or password. Please try again.");
@@ -429,6 +590,18 @@ export default function Customer() {
         localStorage.setItem("mols_customer_member_phone", res.member.phone);
         setShowRegisterInCustomer(false);
         setMemberError("");
+
+        // Auto-sync newly registered customer to cashier POS for this table session
+        if (token && res.member?.id) {
+          try {
+            await api(`/tables/${token}/link-member`, {
+              method: "POST",
+              body: { customer_id: res.member.id },
+            });
+          } catch (linkErr) {
+            console.warn("Table member auto-sync warning:", linkErr);
+          }
+        }
         if (exclusivePromptDish) {
           addToCartDirect(exclusivePromptDish, res.member);
           alert(`Welcome to MOLS MAISON, ${res.member.name}! "${exclusivePromptDish.name}" has been unlocked and added to your order.`);
@@ -467,8 +640,15 @@ export default function Customer() {
         setShowCartDrawer(false);
         setShowConfirmModal(false);
         setShowCallStaffModal(false);
+        setShowMemberModal(false);
         setLoading(false);
         setShowSplash(false);
+        // Auto-logout from membership for this settled session
+        setMemberData(null);
+        setMemberNumberInput("");
+        setMemberPasswordInput("");
+        localStorage.removeItem("mols_customer_member_number");
+        localStorage.removeItem("mols_customer_member_phone");
         return;
       }
 
@@ -485,7 +665,14 @@ export default function Customer() {
         setShowCartDrawer(false);
         setShowConfirmModal(false);
         setShowCallStaffModal(false);
+        setShowMemberModal(false);
         setShowSplash(false);
+        // Auto-logout from membership for this settled session
+        setMemberData(null);
+        setMemberNumberInput("");
+        setMemberPasswordInput("");
+        localStorage.removeItem("mols_customer_member_number");
+        localStorage.removeItem("mols_customer_member_phone");
       } else if (err.status === 404) {
         setInvalid(true);
       }
@@ -527,6 +714,10 @@ export default function Customer() {
       }
     }
 
+    setSheetDragY(0);
+    setIsDraggingSheet(false);
+    setSheetExpanded(false);
+    currentDeltaRef.current = 0;
     setActiveItemModal(dish);
   };
 
@@ -659,6 +850,11 @@ export default function Customer() {
       if (e.status === 403) {
         setSessionSettled(true);
         setShowCallStaffModal(false);
+        setMemberData(null);
+        setMemberNumberInput("");
+        setMemberPasswordInput("");
+        localStorage.removeItem("mols_customer_member_number");
+        localStorage.removeItem("mols_customer_member_phone");
       }
       alert(e.message || "Failed to call staff");
     }
@@ -707,6 +903,11 @@ export default function Customer() {
         setCart({});
         setShowConfirmModal(false);
         setShowCartDrawer(false);
+        setMemberData(null);
+        setMemberNumberInput("");
+        setMemberPasswordInput("");
+        localStorage.removeItem("mols_customer_member_number");
+        localStorage.removeItem("mols_customer_member_phone");
       }
       alert(err.message || "Order failed. Please try again.");
     } finally {
@@ -791,21 +992,20 @@ export default function Customer() {
               MOLS MAISON
             </span>
             {tableNum ? ` at Table #${tableNum}` : ""}! The bill for your table
-            has been settled and this session is now closed.
+            has been settled and your dining loyalty points have been credited to your account.
           </p>
 
-          <div className="mt-5 rounded-2xl bg-warm-50 p-4 text-xs text-warm-700 border border-warm-200 text-left space-y-2">
-            <div className="flex items-center gap-2 font-semibold text-warm-900">
-              <Icons.Utensils />
-              <span>Ordering Locked</span>
+          <div className="mt-5 rounded-2xl bg-amber-50/80 p-4 text-xs text-amber-900 border border-amber-200/80 text-left space-y-2">
+            <div className="flex items-center gap-2 font-semibold text-amber-950">
+              <span className="text-sm">🔒</span>
+              <span>Account Signed Out For Security</span>
             </div>
-            <p className="text-warm-600 leading-relaxed">
-              Customers cannot place further orders or access this table on a settled bill.
+            <p className="text-amber-800 leading-relaxed text-[11px]">
+              You have been automatically signed out of your membership account for this table session to keep your account secure.
             </p>
-            <div className="pt-2 border-t border-warm-200 flex items-start gap-2.5 text-amber-900 font-medium">
-              <span className="text-base leading-none">📱</span>
+            <div className="pt-2 border-t border-amber-200/80 flex items-start gap-2 text-warm-800 font-medium">
               <span>
-                To start a new dining session, please <strong>scan the physical QR code</strong> on {tableNum ? `Table #${tableNum}` : "your table"} using your smartphone camera.
+                To place new orders, please <strong>scan the physical QR code on your table</strong>. You can easily log back into your membership account once your new dining session begins!
               </span>
             </div>
           </div>
@@ -818,11 +1018,21 @@ export default function Customer() {
                 </svg>
               </div>
               <p className="font-semibold text-xs text-warm-900">
-                Rescan Required
+                Rescan Required to Order Again
               </p>
               <p className="text-[11px] text-warm-500 mt-1 leading-relaxed">
-                Aim your smartphone camera at the table QR code to start a fresh dining session.
+                Aim your smartphone camera at the table QR code to start a fresh dining session and re-login.
               </p>
+              {tableNum && (
+                <div className="mt-3">
+                  <a
+                    href={`/scan/${tableNum}`}
+                    className="inline-flex items-center justify-center rounded-xl bg-warm-900 text-white font-display text-xs font-bold px-4 py-2 hover:bg-brand transition shadow-xs"
+                  >
+                    Rescan Table #{tableNum}
+                  </a>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1055,8 +1265,8 @@ export default function Customer() {
                 onClick={() => setTab("menu")}
                 className={`rounded-lg sm:rounded-xl px-3.5 py-1.5 sm:px-4 sm:py-2 transition ${
                   tab === "menu"
-                    ? "bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold"
-                    : "text-warm-700 hover:text-warm-950 hover:bg-warm-100/90 active:bg-warm-200 active:text-warm-950"
+                    ? "bg-brand text-white hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white shadow-xs font-semibold"
+                    : "text-warm-700 hover:text-white hover:bg-brand active:bg-brand-dark"
                 }`}
               >
                 Menu
@@ -1065,8 +1275,8 @@ export default function Customer() {
                 onClick={() => setTab("orders")}
                 className={`relative rounded-lg sm:rounded-xl px-3.5 py-1.5 sm:px-4 sm:py-2 transition ${
                   tab === "orders"
-                    ? "bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold"
-                    : "text-warm-700 hover:text-warm-950 hover:bg-warm-100/90 active:bg-warm-200 active:text-warm-950"
+                    ? "bg-brand text-white hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white shadow-xs font-semibold"
+                    : "text-warm-700 hover:text-white hover:bg-brand active:bg-brand-dark"
                 }`}
               >
                 Orders
@@ -1118,8 +1328,8 @@ export default function Customer() {
                   onClick={() => setSelectedCategory("all")}
                   className={`whitespace-nowrap rounded-full px-4 py-2 text-xs sm:text-sm font-medium transition shadow-xs flex items-center gap-1.5 active:scale-95 ${
                     selectedCategory === "all"
-                      ? "bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white font-semibold"
-                      : "bg-warm-100 text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950"
+                      ? "bg-brand text-white hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white font-semibold"
+                      : "bg-warm-100 text-warm-700 hover:bg-brand hover:text-white active:bg-brand-dark"
                   }`}
                 >
                   All Items
@@ -1129,7 +1339,7 @@ export default function Customer() {
                   className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-xs sm:text-sm font-medium transition shadow-xs active:scale-95 ${
                     selectedCategory === "top_sale"
                       ? "bg-rose-700 text-white hover:bg-rose-800 hover:text-white active:bg-rose-900 active:text-white font-semibold"
-                      : "bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100 hover:text-rose-950 hover:border-rose-300 active:bg-rose-200 active:text-rose-950"
+                      : "bg-rose-50 text-rose-800 border border-rose-200 hover:bg-brand hover:text-white hover:border-brand active:bg-brand-dark"
                   }`}
                 >
                   <Icons.Flame />
@@ -1140,7 +1350,7 @@ export default function Customer() {
                   className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-xs sm:text-sm font-medium transition shadow-xs active:scale-95 ${
                     selectedCategory === "signature"
                       ? "bg-amber-700 text-white hover:bg-amber-800 hover:text-white active:bg-amber-900 active:text-white font-semibold"
-                      : "bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 hover:text-amber-950 hover:border-amber-300 active:bg-amber-200 active:text-amber-950"
+                      : "bg-amber-50 text-amber-900 border border-amber-200 hover:bg-brand hover:text-white hover:border-brand active:bg-brand-dark"
                   }`}
                 >
                   <Icons.Star />
@@ -1151,7 +1361,7 @@ export default function Customer() {
                   className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-xs sm:text-sm font-medium transition shadow-xs active:scale-95 ${
                     selectedCategory === "promo"
                       ? "bg-gradient-to-r from-purple-800 to-amber-700 text-white font-semibold shadow-md"
-                      : "bg-purple-50 text-purple-900 border border-purple-200 hover:bg-purple-100"
+                      : "bg-purple-50 text-purple-900 border border-purple-200 hover:bg-brand hover:text-white hover:border-brand active:bg-brand-dark"
                   }`}
                 >
                   <span>✦ Member Promos</span>
@@ -1163,7 +1373,7 @@ export default function Customer() {
                     className={`whitespace-nowrap rounded-full px-4 py-2 text-xs sm:text-sm font-medium transition shadow-xs active:scale-95 ${
                       selectedCategory === c
                         ? "bg-brand text-white hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white font-semibold"
-                        : "bg-warm-100 text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950"
+                        : "bg-warm-100 text-warm-700 hover:bg-brand hover:text-white active:bg-brand-dark"
                     }`}
                   >
                     {c}
@@ -1561,28 +1771,64 @@ export default function Customer() {
 
       {/* 2. DISH SHOWCASE MODAL (When tapping card for details) */}
       {activeItemModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-warm-950/60 p-0 sm:p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-white shadow-2xl animate-in fade-in duration-200">
-            {/* Modal Image Header */}
-            <div className="relative aspect-[16/9] max-h-56 w-full bg-warm-100 overflow-hidden">
-              {formatImageUrl(activeItemModal.image_url) ? (
-                <img
-                  src={formatImageUrl(activeItemModal.image_url)}
-                  alt={activeItemModal.name}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="h-full w-full flex items-center justify-center bg-warm-100 text-warm-400">
-                  <Icons.Utensils />
-                </div>
-              )}
-              <button
-                onClick={() => setActiveItemModal(null)}
-                className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-xs hover:bg-black/80"
-              >
-                <Icons.Close />
-              </button>
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setActiveItemModal(null);
+            }
+          }}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-warm-950/60 p-0 sm:p-4 backdrop-blur-xs"
+        >
+          <div
+            style={{
+              transform: `translateY(${Math.max(sheetExpanded ? -10 : 0, sheetDragY)}px)`,
+              transition: isDraggingSheet
+                ? "none"
+                : "transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), max-height 0.28s ease, height 0.28s ease",
+            }}
+            className={`w-full max-w-md flex flex-col rounded-t-3xl sm:rounded-3xl bg-white shadow-2xl overflow-hidden ${
+              sheetExpanded ? "h-[94vh] max-h-[94vh]" : "max-h-[82vh]"
+            }`}
+          >
+            {/* Responsive Drag & Pull Handle Bar */}
+            <div
+              onTouchStart={handleSheetTouchStart}
+              onTouchMove={handleSheetTouchMove}
+              onTouchEnd={handleSheetTouchEnd}
+              onMouseDown={handleSheetMouseDown}
+              onClick={handleHandleBarClick}
+              className="w-full pt-3 pb-2.5 px-4 cursor-grab active:cursor-grabbing select-none flex flex-col items-center justify-center touch-none bg-white border-b border-warm-100/90 hover:bg-warm-50/80 transition-colors shrink-0 group"
+              title="Pull up to expand, push down to collapse or dismiss"
+            >
+              <div className="w-14 sm:w-16 h-1.5 rounded-full bg-warm-300 group-hover:bg-warm-400 transition-colors" />
+              <div className="flex items-center gap-1.5 text-[10px] font-mono font-medium text-warm-400 mt-1 select-none">
+                <span className="text-[10px]">↕</span>
+                <span>{sheetExpanded ? "Push down to collapse" : "Pull up to expand / Push down a little"}</span>
+              </div>
             </div>
+
+            {/* Scrollable Dish Details & Customizer Body */}
+            <div className="overflow-y-auto flex-1 thin-scrollbar">
+              {/* Modal Image Header */}
+              <div className="relative aspect-[16/9] max-h-56 w-full bg-warm-100 overflow-hidden">
+                {formatImageUrl(activeItemModal.image_url) ? (
+                  <img
+                    src={formatImageUrl(activeItemModal.image_url)}
+                    alt={activeItemModal.name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="h-full w-full flex items-center justify-center bg-warm-100 text-warm-400">
+                    <Icons.Utensils />
+                  </div>
+                )}
+                <button
+                  onClick={() => setActiveItemModal(null)}
+                  className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-xs hover:bg-black/80"
+                >
+                  <Icons.Close />
+                </button>
+              </div>
 
             <div className="p-5 space-y-4">
               <div>
@@ -1791,6 +2037,7 @@ export default function Customer() {
                 );
               })()}
             </div>
+            </div>
           </div>
         </div>
       )}
@@ -1799,6 +2046,15 @@ export default function Customer() {
       {showCartDrawer && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-warm-950/60 backdrop-blur-xs">
           <div className="w-full max-w-xl max-h-[88vh] flex flex-col rounded-t-3xl bg-white shadow-2xl animate-in slide-in-from-bottom duration-200">
+            {/* Handle Bar */}
+            <div
+              onClick={() => setShowCartDrawer(false)}
+              className="w-full pt-2.5 pb-1 flex justify-center cursor-pointer hover:bg-warm-50 transition"
+              title="Push down to close"
+            >
+              <div className="w-12 h-1.5 rounded-full bg-warm-300" />
+            </div>
+
             {/* Header */}
             <div className="flex items-center justify-between border-b border-warm-100 px-5 py-3.5">
               <div>
@@ -2569,125 +2825,485 @@ export default function Customer() {
                   )}
                 </div>
               ) : (
-                /* Member Logged In View */
+                /* Member Logged In Multi-Tab View */
                 <div className="space-y-4">
-                  {/* Digital VIP Membership Card */}
-                  <div className={`relative overflow-hidden rounded-3xl p-5 text-white shadow-xl ${
-                    memberData.tier_code === "vip" ? "bg-gradient-to-br from-purple-950 via-slate-900 to-stone-900 border border-purple-400/40" :
-                    memberData.tier_code === "gold" ? "bg-gradient-to-br from-amber-600 via-amber-700 to-amber-900 border border-amber-300/50" :
-                    memberData.tier_code === "silver" ? "bg-gradient-to-br from-slate-700 via-stone-700 to-slate-900 border border-slate-300/40" :
-                    "bg-gradient-to-br from-stone-800 via-stone-800 to-stone-950 border border-warm-600/40"
-                  }`}>
-                    <div className="flex items-center justify-between pb-3 border-b border-white/15">
-                      <div className="flex items-center gap-2">
-                        <img src={logo} alt="MOLS MAISON" className="h-7 w-7 object-contain rounded-full bg-white p-0.5" />
-                        <span className="font-logo text-lg tracking-wider">MOLS MAISON</span>
-                      </div>
-                      <span className="rounded-full bg-white/20 px-3 py-0.5 text-[10px] font-mono font-bold uppercase tracking-widest backdrop-blur-xs">
-                        {memberData.tier} Tier
-                      </span>
-                    </div>
-
-                    <div className="my-4 flex items-center justify-between">
-                      <div>
-                        <div className="text-xl font-display font-bold tracking-wide">{memberData.name}</div>
-                        <div className="font-mono text-xs opacity-80 mt-0.5">{memberData.phone}</div>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] uppercase tracking-wider opacity-75 font-mono">Available Points</span>
-                        <div className="font-mono text-2xl font-black text-amber-300">{memberData.points} pts</div>
-                        <div className="text-[10px] opacity-75 font-mono">≈ {money(memberData.points * 0.05)} reward value</div>
-                      </div>
-                    </div>
-
-                    <div className="pt-2 border-t border-white/15 flex items-center justify-between text-[11px] opacity-90">
-                      <span>Perk: {memberData.discount_percent > 0 ? `${memberData.discount_percent}% Off All Dining` : "1 pt per $1 spent"}</span>
-                      <span className="font-mono">{memberData.visits_count} visits</span>
-                    </div>
+                  {/* Loyalty Navigation Tabs */}
+                  <div className="flex border-b border-warm-200/80 gap-1 bg-warm-100/60 p-1 rounded-2xl">
+                    <button
+                      type="button"
+                      onClick={() => setActiveMemberTab("profile")}
+                      className={`flex-1 py-2 px-2 text-center rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                        activeMemberTab === "profile"
+                          ? "bg-white text-warm-900 shadow-2xs"
+                          : "text-warm-600 hover:text-warm-900"
+                      }`}
+                    >
+                      <span>💎</span>
+                      <span>Tier Status</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveMemberTab("prive")}
+                      className={`flex-1 py-2 px-2 text-center rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                        activeMemberTab === "prive"
+                          ? "bg-purple-900 text-white shadow-2xs"
+                          : "text-purple-950 hover:text-purple-800"
+                      }`}
+                    >
+                      <span>👑</span>
+                      <span>Maison Privé</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveMemberTab("rewards")}
+                      className={`flex-1 py-2 px-2 text-center rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                        activeMemberTab === "rewards"
+                          ? "bg-white text-warm-900 shadow-2xs"
+                          : "text-warm-600 hover:text-warm-900"
+                      }`}
+                    >
+                      <span>🎁</span>
+                      <span>Rewards</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveMemberTab("history")}
+                      className={`flex-1 py-2 px-2 text-center rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                        activeMemberTab === "history"
+                          ? "bg-white text-warm-900 shadow-2xs"
+                          : "text-warm-600 hover:text-warm-900"
+                      }`}
+                    >
+                      <span>📜</span>
+                      <span>History</span>
+                    </button>
                   </div>
 
-                  {/* Tier Progress Bar Card */}
-                  {memberData.tier_info && (
-                    <div className="rounded-3xl border border-warm-200 bg-white p-4 sm:p-5 shadow-card space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="font-display text-sm font-bold text-warm-900">
-                          Tier Status &amp; Progress
-                        </span>
-                        <span className="font-mono text-xs font-semibold text-brand">
-                          {memberData.tier_info.progress_percent}% to {memberData.tier_info.next_tier || "Max"}
-                        </span>
+                  {/* TAB 1: TIER STATUS & PROFILE */}
+                  {activeMemberTab === "profile" && (
+                    <div className="space-y-4 animate-in fade-in duration-200">
+                      {/* Digital VIP Luxury Membership Card */}
+                      <div
+                        className={`relative isolate overflow-hidden rounded-2xl p-6 sm:p-7 text-white shadow-xl border ${
+                          (memberData.tier_code || memberData.loyalty_tier || "").toLowerCase() === "vip"
+                            ? "bg-[#332442] border-[#A18A65]"
+                            : (memberData.tier_code || memberData.loyalty_tier || "").toLowerCase() === "gold"
+                              ? "bg-[#80602F] border-[#D4B46E]"
+                              : (memberData.tier_code || memberData.loyalty_tier || "").toLowerCase() === "silver"
+                                ? "bg-[#596168] border-[#C9CBCD]"
+                                : "bg-[#684B3A] border-[#B88E68]"
+                        }`}
+                      >
+                        {/* Decorative borders */}
+                        <div className="pointer-events-none absolute inset-[7px] rounded-xl border border-[#E5D4B4]/30" />
+                        <div className="pointer-events-none absolute inset-[12px] rounded-lg border border-[#E5D4B4]/10" />
+
+                        {/* Background monogram */}
+                        <div className="pointer-events-none absolute -right-5 -bottom-14 select-none">
+                          <span className="font-serif text-[210px] leading-none text-[#E5D4B4]/[0.07]">
+                            M
+                          </span>
+                        </div>
+
+                        {/* Decorative accents */}
+                        <div className="pointer-events-none absolute top-4 left-4 font-serif text-lg text-[#E5D4B4]/70">
+                          ✧
+                        </div>
+                        <div className="pointer-events-none absolute top-4 right-4 font-serif text-lg text-[#E5D4B4]/70">
+                          ✧
+                        </div>
+
+                        <div className="relative z-10 space-y-6">
+                          {/* Brand and membership tier */}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <img
+                                src={logo}
+                                alt="MOLS MAISON"
+                                className="h-10 w-10 rounded-full bg-white object-contain p-1 shadow-xs"
+                              />
+
+                              <div>
+                                <h3 className="font-logo text-lg tracking-[0.16em] text-white">
+                                  MOLS MAISON
+                                </h3>
+                                <p className="mt-0.5 text-[9px] uppercase tracking-[0.25em] text-[#E5D4B4]/75">
+                                  Private Membership
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              {memberData.membership?.is_prive && (
+                                <span className="rounded-sm border border-purple-400/50 bg-purple-900/60 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-purple-200 backdrop-blur-xs">
+                                  👑 Privé
+                                </span>
+                              )}
+                              <span className="rounded-sm border border-[#E5D4B4]/50 bg-black/20 px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[#F0DDBB] backdrop-blur-xs">
+                                {(memberData.tier_code || memberData.loyalty_tier || "").toLowerCase() === "vip"
+                                  ? "VIP Elite"
+                                  : `${memberData.tier || memberData.loyalty_tier || "Bronze"} Member`}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Member information */}
+                          <div className="grid grid-cols-2 gap-4 items-end">
+                            <div className="min-w-0">
+                              <p className="mb-1 text-[9px] uppercase tracking-[0.23em] text-[#E5D4B4]/70 font-mono">
+                                Cardholder
+                              </p>
+
+                              <h2 className="break-words font-serif text-2xl sm:text-3xl font-medium tracking-wide text-[#F5EBDD]">
+                                {memberData.name || memberData.full_name}
+                              </h2>
+
+                              <p className="mt-1.5 text-[12px] font-mono tracking-wider text-white/70">
+                                {memberData.phone}
+                              </p>
+
+                              {memberData.email && (
+                                <p className="mt-0.5 break-all text-[11px] text-white/60">
+                                  {memberData.email}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="text-right">
+                              <p className="mb-1 text-[9px] uppercase tracking-[0.23em] text-[#E5D4B4]/70 font-mono">
+                                Available Points
+                              </p>
+
+                              <p className="font-serif text-3xl sm:text-4xl font-medium tabular-nums text-[#F0D9A5]">
+                                {(memberData.points || memberData.points_balance || 0).toLocaleString()}
+                              </p>
+
+                              <p className="mt-0.5 text-[9px] uppercase tracking-[0.16em] text-white/65 font-mono">
+                                Reward Points
+                              </p>
+
+                              <p className="mt-1 text-[10px] font-mono text-[#E5D4B4]/80">
+                                ≈ {money((memberData.points || memberData.points_balance || 0) / 100)} (100 pts = $1)
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Decorative divider */}
+                          <div className="flex items-center gap-3">
+                            <div className="h-px flex-1 bg-[#E5D4B4]/30" />
+                            <span className="font-serif text-sm text-[#E5D4B4]/80">
+                              ✧
+                            </span>
+                            <div className="h-px flex-1 bg-[#E5D4B4]/30" />
+                          </div>
+
+                          {/* Membership privileges */}
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <p className="text-[9px] uppercase tracking-[0.2em] text-[#E5D4B4]/70 font-mono">
+                                Member Privilege
+                              </p>
+                              <p className="mt-1 font-serif text-sm sm:text-base text-[#F5EBDD]">
+                                {memberData.discount_percent > 0
+                                  ? `${memberData.discount_percent}% Dining Privilege`
+                                  : ((memberData.tier_code || memberData.loyalty_tier || "").toLowerCase() === "silver"
+                                    ? "3% Dining Privilege"
+                                    : (memberData.tier_code || memberData.loyalty_tier || "").toLowerCase() === "gold"
+                                      ? "5% Dining Privilege"
+                                      : (memberData.tier_code || memberData.loyalty_tier || "").toLowerCase() === "vip"
+                                        ? "10% Dining Privilege"
+                                        : "1x Points per $1 spent")}
+                              </p>
+                            </div>
+
+                            <div className="text-right">
+                              <p className="text-[9px] uppercase tracking-[0.2em] text-[#E5D4B4]/70 font-mono">
+                                Multiplier
+                              </p>
+                              <p className="mt-1 font-serif text-sm sm:text-base text-[#F5EBDD]">
+                                {memberData.points_multiplier || 1}x Points Multiplier
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Card footer */}
+                          <div className="flex items-center justify-between border-t border-[#E5D4B4]/20 pt-2.5">
+                            <p className="text-[9px] uppercase tracking-[0.2em] text-white/50 font-mono">
+                              MOLS MAISON · Members Club
+                            </p>
+
+                            <p className="font-mono text-[10px] tracking-widest text-[#E5D4B4]/80">
+                              MM · {String(memberData.id).padStart(5, "0")}
+                            </p>
+                          </div>
+                        </div>
                       </div>
 
-                      {/* Progress Track */}
-                      <div className="h-3 w-full bg-warm-100 rounded-full overflow-hidden p-0.5 border border-warm-200">
-                        <div
-                          className="h-full bg-gradient-to-r from-amber-500 to-brand rounded-full transition-all duration-500"
-                          style={{ width: `${Math.max(5, memberData.tier_info.progress_percent)}%` }}
-                        />
+                      {/* Birthday Month Alert */}
+                      {memberData.birthday_info?.is_birthday_month && (
+                        <div className="rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 p-3 shadow-xs flex items-center gap-3">
+                          <span className="text-2xl">🎂</span>
+                          <div>
+                            <p className="font-bold text-xs text-amber-950">Happy Birthday Month!</p>
+                            <p className="text-[11px] text-amber-800">
+                              {memberData.birthday_info?.available_reward?.description || "You have a complimentary birthday dining dessert gift available!"}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Tier Progress Bar Card */}
+                      {memberData.tier_info && (
+                        <div className="rounded-3xl border border-warm-200 bg-white p-4 sm:p-5 shadow-card space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="font-display text-sm font-bold text-warm-900">
+                              Lifetime Tier Progress
+                            </span>
+                            <span className="font-mono text-xs font-semibold text-brand">
+                              {memberData.tier_info.progress_percent}% to {memberData.tier_info.next_tier || "Max VIP"}
+                            </span>
+                          </div>
+
+                          {/* Progress Track */}
+                          <div className="h-3 w-full bg-warm-100 rounded-full overflow-hidden p-0.5 border border-warm-200">
+                            <div
+                              className="h-full bg-gradient-to-r from-amber-500 to-brand rounded-full transition-all duration-500"
+                              style={{ width: `${Math.max(5, memberData.tier_info.progress_percent)}%` }}
+                            />
+                          </div>
+
+                          <div className="flex justify-between items-center text-xs font-mono">
+                            <span className="font-bold text-warm-800">{memberData.tier_info.current_tier}</span>
+                            {memberData.tier_info.next_tier ? (
+                              <span className="font-bold text-warm-500">Next: {memberData.tier_info.next_tier}</span>
+                            ) : (
+                              <span className="font-bold text-amber-600">✦ Maximum Tier Unlocked!</span>
+                            )}
+                          </div>
+
+                          {memberData.tier_info.next_tier ? (
+                            <div className="rounded-2xl bg-amber-50 border border-amber-200 p-2.5 text-xs text-amber-950 font-medium">
+                              Spend <span className="font-bold font-mono">{money(memberData.tier_info.needed)}</span> more to unlock{" "}
+                              <span className="font-bold">{memberData.tier_info.next_tier}</span> ({memberData.tier_info.next_perk})!
+                            </div>
+                          ) : (
+                            <div className="rounded-2xl bg-purple-50 border border-purple-200 p-2.5 text-xs text-purple-950 font-medium">
+                              You enjoy maximum VIP status with 10% discount and 2x points on every dollar!
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Lifetime Spending Stats */}
+                      <div className="grid grid-cols-2 gap-3 font-mono text-xs">
+                        <div className="rounded-2xl border border-warm-200 bg-warm-50/60 p-3">
+                          <span className="text-warm-500 text-[10px] uppercase font-semibold">Lifetime Spend</span>
+                          <p className="text-base font-bold text-warm-900 mt-0.5">{money(memberData.total_spent)}</p>
+                        </div>
+                        <div className="rounded-2xl border border-warm-200 bg-warm-50/60 p-3">
+                          <span className="text-warm-500 text-[10px] uppercase font-semibold">Total Points Earned</span>
+                          <p className="text-base font-bold text-warm-900 mt-0.5">{memberData.total_points_earned || memberData.points} pts</p>
+                        </div>
                       </div>
 
-                      <div className="flex justify-between items-center text-xs font-mono">
-                        <span className="font-bold text-warm-800">{memberData.tier_info.current_tier}</span>
-                        {memberData.tier_info.next_tier ? (
-                          <span className="font-bold text-warm-500">Next: {memberData.tier_info.next_tier}</span>
+                      {/* Tier Perks Breakdown Table */}
+                      <div className="rounded-3xl border border-warm-200 bg-white p-4 shadow-card space-y-2 text-xs">
+                        <h5 className="font-display font-bold text-warm-900 text-xs sm:text-sm">Spending Tier Rules &amp; Multipliers</h5>
+                        <div className="divide-y divide-warm-100 font-mono text-[11px]">
+                          <div className="py-1.5 flex justify-between">
+                            <span className="text-warm-600">🥉 Bronze ($0–$199.99)</span>
+                            <span className="text-warm-900 font-semibold">0% Off · 1x Multiplier</span>
+                          </div>
+                          <div className="py-1.5 flex justify-between">
+                            <span className="text-slate-700 font-semibold">🥈 Silver ($200–$399.99)</span>
+                            <span className="text-warm-900 font-semibold">3% Off · 1.25x Multiplier</span>
+                          </div>
+                          <div className="py-1.5 flex justify-between">
+                            <span className="text-amber-800 font-semibold">⭐ Gold ($400–$599.99)</span>
+                            <span className="text-warm-900 font-semibold">5% Off · 1.5x Multiplier</span>
+                          </div>
+                          <div className="py-1.5 flex justify-between">
+                            <span className="text-purple-800 font-bold">💎 VIP ($600+)</span>
+                            <span className="text-warm-900 font-semibold">10% Off · 2.0x Multiplier</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 2: MAISON PRIVÉ ANNUAL MEMBERSHIP */}
+                  {activeMemberTab === "prive" && (
+                    <div className="space-y-4 animate-in fade-in duration-200">
+                      <div className="rounded-3xl bg-gradient-to-br from-purple-950 via-slate-900 to-purple-900 text-white p-5 shadow-xl border border-purple-400/40 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-2xl">👑</span>
+                            <div>
+                              <h4 className="font-display text-lg font-bold tracking-wide">Maison Privé</h4>
+                              <p className="text-[11px] font-mono text-purple-200">Annual Luxury Dining Subscription · $49.99/year</p>
+                            </div>
+                          </div>
+                          <span className={`rounded-full px-3 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider ${
+                            memberData.membership?.is_prive
+                              ? "bg-emerald-500/30 text-emerald-300 border border-emerald-400/50"
+                              : "bg-white/20 text-purple-200"
+                          }`}>
+                            {memberData.membership?.is_prive ? "Active Member" : "Standard Account"}
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-purple-100/90 leading-relaxed">
+                          Maison Privé is an optional annual subscription providing bespoke concierge dining privileges. It operates independently of and compliments your lifetime spending tier.
+                        </p>
+
+                        {memberData.membership?.is_prive ? (
+                          <div className="rounded-2xl bg-white/10 p-3 border border-white/15 font-mono text-xs flex justify-between items-center">
+                            <div>
+                              <span className="text-[10px] text-purple-300 uppercase block">Membership Expiry</span>
+                              <span className="font-bold text-purple-100">{memberData.membership.end_date}</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[10px] text-purple-300 uppercase block">Remaining</span>
+                              <span className="font-bold text-emerald-300">{memberData.membership.days_remaining} days left</span>
+                            </div>
+                          </div>
                         ) : (
-                          <span className="font-bold text-amber-600">✦ Highest Tier Unlocked!</span>
+                          <button
+                            type="button"
+                            disabled={loyaltyActionLoading}
+                            onClick={handleSubscribeMaisonPrive}
+                            className="w-full rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 text-purple-950 font-display font-bold py-3 text-xs sm:text-sm shadow-md hover:from-amber-300 hover:to-amber-400 active:scale-95 transition"
+                          >
+                            {loyaltyActionLoading ? "Processing..." : "Subscribe to Maison Privé ($49.99 / 12 Months)"}
+                          </button>
                         )}
                       </div>
 
-                      {memberData.tier_info.next_tier ? (
-                        <div className="rounded-2xl bg-amber-50 border border-amber-200 p-2.5 text-xs text-amber-950 font-medium">
-                          Spend <span className="font-bold font-mono">{money(memberData.tier_info.needed)}</span> more to unlock{" "}
-                          <span className="font-bold">{memberData.tier_info.next_tier}</span> ({memberData.tier_info.next_perk})!
+                      {/* Benefits Checklist */}
+                      <div className="rounded-3xl border border-warm-200 bg-white p-5 shadow-card space-y-3">
+                        <h5 className="font-display font-bold text-warm-900 text-sm">Exclusive Maison Privé Privileges</h5>
+                        <div className="space-y-2 text-xs text-warm-700">
+                          {[
+                            "Priority table reservations on peak dining nights",
+                            "Complimentary birthday dessert tasting",
+                            "Complimentary welcome signature drink on arrival",
+                            "Exclusive seasonal menu access before public release",
+                            "Private invitations to chef tastings & wine pairings",
+                            "Special member-only promotional events",
+                          ].map((b, i) => (
+                            <div key={i} className="flex items-center gap-2.5">
+                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold">✓</span>
+                              <span>{b}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 3: REWARDS CATALOG */}
+                  {activeMemberTab === "rewards" && (
+                    <div className="space-y-4 animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between rounded-2xl bg-amber-50 border border-amber-200 p-3 font-mono text-xs text-amber-950">
+                        <span>Your Available Balance:</span>
+                        <span className="font-bold text-base text-amber-900">{memberData.points} points ({money(memberData.points / 100)})</span>
+                      </div>
+
+                      {/* Catalog Items */}
+                      <div className="space-y-2.5">
+                        <h5 className="font-display font-bold text-warm-900 text-xs sm:text-sm">Available Rewards for Redemption</h5>
+                        <div className="space-y-2">
+                          {(customerRewardsData?.catalog || [
+                            { id: 1, name: "$2 Dining Discount", reward_value: 2, points_required: 200, reward_type: "discount" },
+                            { id: 2, name: "$5 Dining Discount", reward_value: 5, points_required: 500, reward_type: "discount" },
+                            { id: 3, name: "$10 Dining Discount", reward_value: 10, points_required: 1000, reward_type: "discount" },
+                            { id: 4, name: "$20 Dining Discount", reward_value: 20, points_required: 2000, reward_type: "discount" },
+                            { id: 5, name: "Complimentary Dessert", reward_value: 5, points_required: 500, reward_type: "free_item" },
+                            { id: 6, name: "Signature Drink", reward_value: 7, points_required: 700, reward_type: "free_item" },
+                            { id: 7, name: "Complimentary Appetizer", reward_value: 10, points_required: 1000, reward_type: "free_item" },
+                          ]).map((rw) => {
+                            const canAfford = memberData.points >= rw.points_required;
+                            return (
+                              <div
+                                key={rw.id}
+                                className="flex items-center justify-between rounded-2xl border border-warm-200 bg-white p-3 shadow-xs"
+                              >
+                                <div>
+                                  <div className="flex items-center gap-1.5 font-bold text-xs text-warm-900">
+                                    <span>{rw.reward_type === "discount" ? "🏷️" : rw.reward_type === "free_item" ? "🍰" : "⭐"}</span>
+                                    <span>{rw.name}</span>
+                                  </div>
+                                  <p className="font-mono text-[11px] text-warm-500 mt-0.5">
+                                    Requires {rw.points_required} pts · Value {money(rw.reward_value)}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  disabled={!canAfford || loyaltyActionLoading}
+                                  onClick={() => handleRedeemReward(rw.id)}
+                                  className={`rounded-xl px-3 py-1.5 font-mono text-xs font-bold transition active:scale-95 ${
+                                    canAfford
+                                      ? "bg-brand text-white shadow-xs hover:bg-brand-dark"
+                                      : "bg-warm-100 text-warm-400 cursor-not-allowed"
+                                  }`}
+                                >
+                                  {canAfford ? "Redeem" : "Locked"}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 4: POINTS HISTORY */}
+                  {activeMemberTab === "history" && (
+                    <div className="space-y-3 animate-in fade-in duration-200">
+                      <div className="flex justify-between items-center">
+                        <h5 className="font-display font-bold text-warm-900 text-xs sm:text-sm">Points Ledger &amp; History</h5>
+                        <span className="font-mono text-[11px] text-warm-500">Rolling 12-mo Activity</span>
+                      </div>
+
+                      {customerTxData.length === 0 ? (
+                        <div className="rounded-2xl border border-warm-200 bg-warm-50/60 p-6 text-center text-xs text-warm-500 font-mono">
+                          No transactions recorded yet. Points earned on paid dining will appear here.
                         </div>
                       ) : (
-                        <div className="rounded-2xl bg-purple-50 border border-purple-200 p-2.5 text-xs text-purple-950 font-medium">
-                          You enjoy maximum VIP status with 15% discount and 2x points on every dollar!
+                        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                          {customerTxData.map((tx) => (
+                            <div
+                              key={tx.id}
+                              className="rounded-2xl border border-warm-200/90 bg-white p-3 text-xs shadow-xs flex items-center justify-between"
+                            >
+                              <div>
+                                <p className="font-bold text-warm-900">{tx.description || tx.type}</p>
+                                <p className="font-mono text-[10px] text-warm-500">
+                                  {tx.created_at ? new Date(tx.created_at).toLocaleDateString() : ""} · Balance after: {tx.balance_after}p
+                                </p>
+                              </div>
+                              <span className={`font-mono font-bold text-xs px-2 py-0.5 rounded-lg ${
+                                tx.points > 0 ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
+                              }`}>
+                                {tx.points > 0 ? `+${tx.points}` : tx.points}p
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
                   )}
 
-                  {/* Lifetime Stats */}
-                  <div className="grid grid-cols-2 gap-3 font-mono text-xs">
-                    <div className="rounded-2xl border border-warm-200 bg-warm-50/60 p-3">
-                      <span className="text-warm-500 text-[10px] uppercase font-semibold">Total Spent</span>
-                      <p className="text-base font-bold text-warm-900 mt-0.5">{money(memberData.total_spent)}</p>
-                    </div>
-                    <div className="rounded-2xl border border-warm-200 bg-warm-50/60 p-3">
-                      <span className="text-warm-500 text-[10px] uppercase font-semibold">Dining Visits</span>
-                      <p className="text-base font-bold text-warm-900 mt-0.5">{memberData.visits_count} times</p>
-                    </div>
-                  </div>
-
-                  {/* Tier Perks Breakdown */}
-                  <div className="rounded-3xl border border-warm-200 bg-white p-4 shadow-card space-y-2 text-xs">
-                    <h5 className="font-display font-bold text-warm-900 text-xs sm:text-sm">Membership Perks Overview</h5>
-                    <div className="divide-y divide-warm-100 font-mono text-[11px]">
-                      <div className="py-1.5 flex justify-between">
-                        <span className="text-warm-600">🥉 Bronze ($0+)</span>
-                        <span className="text-warm-900">1x Points per $1</span>
-                      </div>
-                      <div className="py-1.5 flex justify-between">
-                        <span className="text-slate-700 font-semibold">🥈 Silver ($100+)</span>
-                        <span className="text-warm-900">5% Discount + 1.2x Points</span>
-                      </div>
-                      <div className="py-1.5 flex justify-between">
-                        <span className="text-amber-800 font-semibold">⭐ Gold ($300+)</span>
-                        <span className="text-warm-900">10% Discount + 1.5x Points</span>
-                      </div>
-                      <div className="py-1.5 flex justify-between">
-                        <span className="text-purple-800 font-bold">💎 VIP ($600+)</span>
-                        <span className="text-warm-900">15% Discount + 2x Points</span>
-                      </div>
-                    </div>
-                  </div>
-
                   {/* Switch Member Account Action */}
-                  <div className="pt-2 text-center">
+                  <div className="pt-2 text-center border-t border-warm-100">
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
+                        if (token) {
+                          try {
+                            await api(`/tables/${token}/unlink-member`, { method: "POST" });
+                          } catch {}
+                        }
                         setMemberData(null);
                         setMemberNumberInput("");
                         setMemberPasswordInput("");

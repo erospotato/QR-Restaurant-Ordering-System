@@ -27,6 +27,15 @@ class TableController extends Controller
             $totalBill = $tableOrders->sum('total');
             $activeCount = $tableOrders->where('status', '!=', 'served')->count();
 
+            $tableMemberId = cache()->get("table_member:{$t->number}");
+            $tableMember = $tableMemberId ? \App\Models\Customer::find($tableMemberId) : null;
+            if (!$tableMember && $tableOrders->isNotEmpty()) {
+                $orderWithMem = $tableOrders->first(fn($o) => !empty($o->customer_id) || !empty($o->member_id));
+                if ($orderWithMem) {
+                    $tableMember = \App\Models\Customer::find($orderWithMem->customer_id ?: $orderWithMem->member_id);
+                }
+            }
+
             return [
                 'id' => $t->id,
                 'number' => $t->number,
@@ -37,6 +46,7 @@ class TableController extends Controller
                 'active_order_count' => $activeCount,
                 'unpaid_total' => (float) $totalBill,
                 'token' => $canSeeToken ? $t->token : null,
+                'member' => $tableMember ? $tableMember->toApi() : null,
             ];
         });
     }
@@ -57,6 +67,9 @@ class TableController extends Controller
             abort(404, 'Invalid table QR token.');
         }
 
+        $tableMemberId = cache()->get("table_member:{$t->number}");
+        $tableMember = $tableMemberId ? \App\Models\Customer::find($tableMemberId) : null;
+
         return response()->json([
             'table' => $t->number,
             'capacity' => $t->capacity,
@@ -64,6 +77,7 @@ class TableController extends Controller
             'merged_with' => $t->merged_with,
             'token' => $t->token,
             'settled' => false,
+            'member' => $tableMember ? $tableMember->toApi() : null,
         ]);
     }
 
@@ -115,6 +129,82 @@ class TableController extends Controller
             ->orderBy('id')
             ->get()
             ->map->toApi();
+    }
+
+    // Link customer/member to table QR dining session
+    public function linkMember(Request $r, string $token)
+    {
+        $table = DiningTable::where('token', $token)->first();
+        if (!$table) {
+            abort(404, 'Invalid table token');
+        }
+
+        $r->validate([
+            'customer_id' => 'nullable|integer',
+            'phone' => 'nullable|string',
+            'member_id' => 'nullable|integer',
+        ]);
+
+        $customerId = $r->input('customer_id') ?: $r->input('member_id');
+        $customer = null;
+        if ($customerId) {
+            $customer = \App\Models\Customer::find($customerId);
+        }
+        if (!$customer && $r->filled('phone')) {
+            $cleanPhone = preg_replace('/\s+/', '', $r->input('phone'));
+            $customer = \App\Models\Customer::where('phone', $cleanPhone)->first();
+        }
+
+        if (!$customer) {
+            abort(404, 'Customer membership profile not found.');
+        }
+
+        // Cache customer association for this table number
+        cache()->put("table_member:{$table->number}", $customer->id, now()->addHours(12));
+
+        // Also update any unpaid orders for this table
+        Order::where('dining_table_id', $table->id)
+            ->whereNull('paid_at')
+            ->update([
+                'member_id' => $customer->id,
+                'customer_id' => $customer->id,
+                'customer_name' => "{$customer->full_name} ({$customer->phone})",
+            ]);
+
+        PosUpdated::safeDispatch();
+
+        return response()->json([
+            'ok' => true,
+            'table' => $table->number,
+            'member' => $customer->toApi(),
+            'message' => "Table #{$table->number} successfully linked to member {$customer->full_name}.",
+        ]);
+    }
+
+    // Unlink member from table
+    public function unlinkMember(Request $r, string $token)
+    {
+        $table = DiningTable::where('token', $token)->first();
+        if (!$table) {
+            abort(404, 'Invalid table token');
+        }
+
+        cache()->forget("table_member:{$table->number}");
+
+        Order::where('dining_table_id', $table->id)
+            ->whereNull('paid_at')
+            ->update([
+                'member_id' => null,
+                'customer_id' => null,
+            ]);
+
+        PosUpdated::safeDispatch();
+
+        return response()->json([
+            'ok' => true,
+            'table' => $table->number,
+            'message' => "Membership unlinked from Table #{$table->number}.",
+        ]);
     }
 
     // Add table (Admin, Owner, Manager)
@@ -316,6 +406,44 @@ class TableController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    // Cashier or Manager cancels the entire order for a table and removes all items
+    public function cancelOrder(Request $r, int $number)
+    {
+        $table = DiningTable::where('number', $number)->firstOrFail();
+        $reason = $r->input('reason', 'Cancelled by Cashier');
+
+        $activeOrders = Order::where('dining_table_id', $table->id)->whereNull('paid_at')->get();
+        if ($activeOrders->isEmpty()) {
+            abort(422, "Table #{$number} has no active orders to cancel.");
+        }
+
+        DB::transaction(function () use ($table, $activeOrders) {
+            foreach ($activeOrders as $order) {
+                // Delete all order items associated with the order
+                $order->items()->delete();
+                // Delete the unpaid order itself
+                $order->delete();
+            }
+
+            // Reset table status to available
+            $table->update(['status' => 'available']);
+
+            // Clear table member cache if any
+            cache()->forget("table_member:{$table->number}");
+
+            // Reset any merged tables if merged
+            DiningTable::where('merged_with', "Table {$table->number}")->update(['status' => 'available']);
+        });
+
+        PosUpdated::safeDispatch();
+
+        return response()->json([
+            'ok' => true,
+            'message' => "Order for Table #{$number} has been completely cancelled and all items removed.",
+            'table' => $number,
+        ]);
+    }
+
     // Pay and close table (Cashier, Manager, Owner, Admin)
     public function pay(Request $r, int $number)
     {
@@ -347,41 +475,48 @@ class TableController extends Controller
             $change = 0;
         }
 
-        // Process Membership if customer is a member
+        // Process Membership & Loyalty via LoyaltyService
         $memberId = $r->input('member_id');
         $memberPhone = $r->input('member_phone');
         $member = null;
 
         if ($memberId) {
-            $member = Member::find($memberId);
+            $member = \App\Models\Customer::find($memberId);
         } elseif ($memberPhone) {
             $cleanP = trim($memberPhone);
-            $member = Member::where('phone', $cleanP)->first();
+            $member = \App\Models\Customer::where('phone', $cleanP)->first();
+        }
+
+        // If not explicitly provided in payment request, check cached table member or active orders
+        if (!$member) {
+            $cachedMid = cache()->get("table_member:{$t->number}");
+            if ($cachedMid) {
+                $member = \App\Models\Customer::find($cachedMid);
+            }
+        }
+        if (!$member && $unpaidOrders->isNotEmpty()) {
+            $orderWithMid = $unpaidOrders->first(fn($o) => !empty($o->customer_id) || !empty($o->member_id));
+            if ($orderWithMid) {
+                $member = \App\Models\Customer::find($orderWithMid->customer_id ?: $orderWithMid->member_id);
+            }
         }
 
         $pointsEarned = 0;
         $pointsRedeemed = max(0, (int) $r->input('points_redeemed', 0));
+        $loyaltyResult = null;
 
-        if ($member) {
-            // Points multiplier by tier
-            $multiplier = match (strtolower($member->tier)) {
-                'vip' => 2.0,
-                'gold' => 1.5,
-                'silver' => 1.2,
-                default => 1.0,
-            };
-            $pointsEarned = (int) round($finalTotal * $multiplier);
+        $primaryOrder = $unpaidOrders->first();
 
-            $newTotalSpent = (float) $member->total_spent + $finalTotal;
-            $newPoints = max(0, ($member->points - $pointsRedeemed) + $pointsEarned);
-            $newTier = Member::determineTier($newTotalSpent);
-
-            $member->update([
-                'total_spent' => $newTotalSpent,
-                'points' => $newPoints,
-                'tier' => $newTier,
-                'visits_count' => $member->visits_count + 1,
-            ]);
+        if ($member && $primaryOrder) {
+            $loyaltyService = app(\App\Services\LoyaltyService::class);
+            $loyaltyResult = $loyaltyService->processOrderPayment(
+                $primaryOrder,
+                $member,
+                $finalTotal,
+                $pointsRedeemed
+            );
+            $pointsEarned = $loyaltyResult['points_earned'];
+            $pointsRedeemed = $loyaltyResult['points_redeemed'];
         }
 
         Order::where('dining_table_id', $t->id)
@@ -394,13 +529,15 @@ class TableController extends Controller
                 'tip' => $tip,
                 'tax' => $tax,
                 'discount_amount' => $discountAmount,
-                'customer_name' => $member ? "{$member->name} ({$member->phone})" : $r->input('customer_name'),
+                'customer_name' => $member ? "{$member->full_name} ({$member->phone})" : $r->input('customer_name'),
                 'member_id' => $member?->id,
+                'customer_id' => $member?->id,
                 'points_earned' => $pointsEarned,
                 'points_redeemed' => $pointsRedeemed,
             ]);
 
-        // Invalidate current table session token so customer cannot access or re-order
+        // Invalidate current table session token and clear linked member
+        cache()->forget("table_member:{$t->number}");
         $oldToken = $t->token;
         if ($oldToken) {
             cache()->put("settled_token:{$oldToken}", [
@@ -420,6 +557,7 @@ class TableController extends Controller
         // Also unmerge and rotate tokens for any auxiliary tables that were merged into this table
         $auxTables = DiningTable::where('merged_with', "Table {$number}")->get();
         foreach ($auxTables as $aux) {
+            cache()->forget("table_member:{$aux->number}");
             if ($aux->token) {
                 cache()->put("settled_token:{$aux->token}", [
                     'table_number' => $aux->number,
@@ -443,6 +581,9 @@ class TableController extends Controller
             'member' => $member ? array_merge($member->toApi(), [
                 'points_earned_this_visit' => $pointsEarned,
                 'points_redeemed_this_visit' => $pointsRedeemed,
+                'tier_upgraded' => $loyaltyResult ? $loyaltyResult['tier_upgraded'] : false,
+                'previous_tier' => $loyaltyResult ? $loyaltyResult['previous_tier'] : null,
+                'is_maison_prive' => $member->hasActiveMaisonPrive(),
             ]) : null,
         ]);
     }

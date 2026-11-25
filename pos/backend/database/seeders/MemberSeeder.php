@@ -29,9 +29,9 @@ class MemberSeeder extends Seeder
                 'visits_count' => 5,
             ],
             [
-                'name' => 'Samantha Ray',
+                'name' => 'Mols Rocherfont',
                 'phone' => '08112233445',
-                'email' => 'samantha@example.com',
+                'email' => 'mols@goat.com',
                 'tier' => 'vip',
                 'points' => 890,
                 'total_spent' => 950.00,

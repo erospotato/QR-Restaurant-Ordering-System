@@ -130,8 +130,8 @@ export default function StaffNavbar({
                 className={({ isActive }) =>
                   `flex items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-xl px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition ${
                     isActive || active
-                      ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs ring-1 ring-warm-900 font-semibold'
-                      : 'text-warm-700 hover:bg-warm-100 hover:text-warm-950 active:bg-warm-200 active:text-warm-950'
+                      ? 'bg-brand text-white hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white shadow-xs ring-1 ring-brand font-semibold'
+                      : 'text-warm-700 hover:bg-brand hover:text-white active:bg-brand-dark active:text-white'
                   }`
                 }
               >
@@ -148,7 +148,7 @@ export default function StaffNavbar({
             <button
               type="button"
               onClick={onToggleSound}
-              className="rounded-xl p-2 text-warm-600 hover:bg-warm-100 hover:text-warm-950 active:bg-warm-200 active:text-warm-950 transition"
+              className="rounded-xl p-2 text-warm-600 hover:bg-brand hover:text-white active:bg-brand-dark transition"
               title={soundEnabled ? 'Chime sound enabled' : 'Chime sound muted'}
             >
               <Icons.Volume muted={!soundEnabled} />
@@ -162,7 +162,7 @@ export default function StaffNavbar({
           <button
             type="button"
             onClick={() => setConfirmModal('switch')}
-            className="rounded-xl border border-warm-300 bg-white px-2.5 sm:px-3 py-1.5 text-xs font-medium text-warm-700 hover:bg-warm-100 hover:text-warm-950 hover:border-warm-400 active:bg-warm-200 transition shadow-xs cursor-pointer"
+            className="rounded-xl border border-warm-300 bg-white px-2.5 sm:px-3 py-1.5 text-xs font-medium text-warm-700 hover:bg-brand hover:text-white hover:border-brand active:bg-brand-dark transition shadow-xs cursor-pointer"
             title="Switch staff account"
           >
             Switch User
@@ -171,7 +171,7 @@ export default function StaffNavbar({
           <button
             type="button"
             onClick={() => setConfirmModal('exit')}
-            className="rounded-xl bg-warm-900 px-3 sm:px-3.5 py-1.5 text-xs sm:text-sm font-semibold text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white transition shadow-xs cursor-pointer"
+            className="rounded-xl bg-warm-900 px-3 sm:px-3.5 py-1.5 text-xs sm:text-sm font-semibold text-white hover:bg-brand hover:text-white active:bg-brand-dark transition shadow-xs cursor-pointer"
             title="End shift and log out"
           >
             Exit

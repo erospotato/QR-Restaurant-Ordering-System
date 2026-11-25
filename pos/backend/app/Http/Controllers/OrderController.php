@@ -38,7 +38,7 @@ class OrderController extends Controller
         }
         abort_unless(RateLimiter::attempt('order:' . $table->id, 10, fn () => true, 60), 429, 'Too many orders, please wait a moment.');
 
-        // Verify member if provided
+        // Verify member if provided or linked to this table
         $member = null;
         if ($r->filled('member_id')) {
             $member = Member::find($r->input('member_id'));
@@ -46,6 +46,12 @@ class OrderController extends Controller
         if (!$member && $r->filled('member_phone')) {
             $cleanPhone = preg_replace('/\s+/', '', $r->input('member_phone'));
             $member = Member::where('phone', $cleanPhone)->first();
+        }
+        if (!$member) {
+            $cachedMemberId = cache()->get("table_member:{$table->number}");
+            if ($cachedMemberId) {
+                $member = Member::find($cachedMemberId);
+            }
         }
 
         DB::transaction(function () use ($r, $table, $member) {
@@ -55,6 +61,8 @@ class OrderController extends Controller
                 'is_addon' => $hasUnpaid,
                 'notes' => $r->input('notes'),
                 'customer_name' => $member ? "{$member->name} ({$member->phone})" : null,
+                'member_id' => $member?->id,
+                'customer_id' => $member?->id,
             ]);
 
             $tierLevels = ['Bronze' => 1, 'Silver' => 2, 'Gold' => 3, 'VIP' => 4];
