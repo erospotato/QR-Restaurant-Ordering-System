@@ -103,7 +103,7 @@ class CustomerController extends Controller
         $customer = Customer::findByLoginIdentifier($identifier, $password);
 
         if (!$customer) {
-            abort(404, 'No customer membership found matching that username, phone number, or membership #.');
+            abort(404, 'Incorrect username/phone number or password.');
         }
 
         if (!$customer->verifyPassword($password)) {

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { api, money, inp, timeStr, ago, formatImageUrl } from '../lib'
+import { api, money, inp, timeStr, ago, formatImageUrl, printThermalReceipt } from '../lib'
 import { Icons } from './Icons'
 import { useDialog } from '../context/DialogContext'
 import logo from '../assets/imgs/logo.jpg'
@@ -93,18 +93,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
   const [processing, setProcessing] = useState(false)
 
   const handlePrintReceipt = () => {
-    let style = document.getElementById('thermal-print-page-style')
-    if (!style) {
-      style = document.createElement('style')
-      style.id = 'thermal-print-page-style'
-      style.textContent = `@page { size: 80mm auto; margin: 0; }`
-      document.head.appendChild(style)
-    }
-    window.print()
-    setTimeout(() => {
-      const el = document.getElementById('thermal-print-page-style')
-      if (el) el.remove()
-    }, 2000)
+    printThermalReceipt('printable-receipt')
   }
 
   // Merge modal
@@ -682,7 +671,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                       <p className="text-xs font-mono text-warm-500">{t.capacity} seats</p>
                     </div>
                     <span
-                      className={`rounded-md px-1.5 py-0.2 font-mono text-[10px] font-semibold ${
+                      className={`rounded-md px-2 py-0.5 font-mono text-[10px] font-semibold leading-normal ${
                         isSelected
                           ? 'bg-brand text-white'
                           : isOccupied
@@ -758,7 +747,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
               {/* Table Header & Quick Add Dishes Action */}
               <div className="flex items-start justify-between gap-2 border-b border-warm-100 pb-3">
                 <div className="min-w-0 flex-1">
-                  <h3 className="font-display text-base sm:text-lg font-bold text-warm-900 leading-tight">
+                  <h3 className="font-display text-base sm:text-lg font-bold text-warm-900 leading-snug">
                     Table #{selectedTable} Bill
                   </h3>
                   <p className="text-[11px] font-mono text-warm-500 mt-1 leading-snug">
@@ -851,7 +840,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                 <>
                   {/* Itemized active items with Quantity Controls & Remove */}
                   <div>
-                    <div className="flex items-center justify-between text-m font-semibold uppercase tracking-wider text-warm-600 mb-2.5">
+                    <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-warm-600 mb-2.5">
                       <span>Table Dishes ({allActiveItems.length})</span>
                        
                     </div>
@@ -862,14 +851,16 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                             <div className="flex items-baseline gap-1.5 flex-wrap">
                               <span className="font-semibold text-warm-900 truncate">{it.name}</span>
                               {(it.is_member_exclusive || (it.notes && it.notes.includes('Member Exclusive'))) && (
-                                <span className="rounded bg-purple-100 text-purple-900 text-[9px] font-bold px-1.5 py-0.2 border border-purple-200">
+                                <span className="rounded bg-purple-100 text-purple-900 text-[9px] font-bold leading-normal px-2 py-0.5 border border-purple-200">
                                   ✦ VIP Exclusive
                                 </span>
                               )}
                               <span className="font-mono text-warm-500 text-[11px]">({money(it.price)})</span>
                             </div>
                             {it.notes && (
-                              <p className="text-[11px] text-amber-700 italic truncate">Note: {it.notes}</p>
+                              <p className="mt-1 text-[11px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/70 inline-block leading-snug">
+                                Note: {it.notes}
+                              </p>
                             )}
                           </div>
 
@@ -1060,15 +1051,15 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                                   <div className="font-mono text-[11px] text-warm-500">{m.phone}</div>
                                 </div>
                                 <div className="text-right">
-                                  <span className={`inline-block px-1.5 py-0.2 rounded font-mono text-[10px] font-bold uppercase ${
-                                    m.tier_code === 'vip' ? 'bg-purple-100 text-purple-900' :
-                                    m.tier_code === 'gold' ? 'bg-amber-100 text-amber-900' :
-                                    m.tier_code === 'silver' ? 'bg-slate-100 text-slate-800' :
-                                    'bg-warm-100 text-warm-800'
+                                  <span className={`inline-block px-2 py-0.5 rounded font-mono text-[10px] font-bold leading-normal uppercase border ${
+                                    m.tier_code === 'vip' ? 'bg-[#1C1917] text-[#F5D77F] border-[#C9A23F]' :
+                                    m.tier_code === 'gold' ? 'bg-[#FEF9E7] text-[#9A6B10] border-[#E6C770]' :
+                                    m.tier_code === 'silver' ? 'bg-slate-100 text-slate-700 border-slate-300' :
+                                    'bg-[#FBF4EC] text-[#8A4E24] border-[#DFBE9F]'
                                   }`}>
                                     {m.tier}
                                   </span>
-                                  <div className="font-mono text-[11px] text-amber-700 font-bold">{m.points} pts</div>
+                                  <div className="font-mono text-[11px] text-warm-700 font-bold">{m.points} pts</div>
                                 </div>
                               </button>
                             ))}
@@ -1077,38 +1068,38 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                       </div>
                     ) : (
                       /* Selected Member Card */
-                      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 space-y-2 text-xs shadow-2xs">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-amber-200 text-amber-900 font-bold shadow-2xs">
+                      <div className="rounded-2xl border border-warm-200 bg-warm-50 p-3 space-y-2.5 text-xs shadow-2xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white border border-warm-200 text-amber-600 font-bold shadow-2xs">
                               ⭐
                             </span>
-                            <div>
+                            <div className="min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="font-display font-bold text-warm-900 text-sm">{selectedMember.name || selectedMember.full_name}</span>
                                 {isTableMemberSynced && (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 text-[10px] font-bold border border-emerald-300">
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-white text-emerald-700 px-2 py-0.5 text-[10px] font-semibold border border-emerald-200">
                                     <Icons.Check className="w-3 h-3 text-emerald-600" />
                                     Auto-synced from Table QR
                                   </span>
                                 )}
                               </div>
-                              <div className="font-mono text-[11px] text-warm-600">{selectedMember.phone}</div>
+                              <div className="font-mono text-[11px] text-warm-500">{selectedMember.phone}</div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 shrink-0">
                             <span className={`rounded-lg px-2 py-0.5 text-[10px] font-bold font-mono uppercase shadow-2xs border ${
-                              selectedMember.tier_code === 'vip' ? 'bg-purple-600 text-white border-purple-700' :
-                              selectedMember.tier_code === 'gold' ? 'bg-amber-500 text-white border-amber-600' :
-                              selectedMember.tier_code === 'silver' ? 'bg-slate-600 text-white border-slate-700' :
-                              'bg-warm-700 text-white border-warm-800'
+                              selectedMember.tier_code === 'vip' ? 'bg-[#1C1917] text-[#F5D77F] border-[#C9A23F]' :
+                              selectedMember.tier_code === 'gold' ? 'bg-[#FEF9E7] text-[#9A6B10] border-[#E6C770]' :
+                              selectedMember.tier_code === 'silver' ? 'bg-slate-100 text-slate-700 border-slate-300' :
+                              'bg-[#FBF4EC] text-[#8A4E24] border-[#DFBE9F]'
                             }`}>
                               {selectedMember.tier}
                             </span>
                             <button
                               type="button"
                               onClick={handleClearMember}
-                              className="rounded-lg p-1 text-warm-500 hover:bg-warm-200 hover:text-warm-900 transition"
+                              className="rounded-lg p-1 text-warm-400 hover:bg-warm-200 hover:text-warm-900 transition"
                               title="Deselect member"
                             >
                               ✕
@@ -1117,14 +1108,14 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                         </div>
 
                         {/* Points & Perk Details */}
-                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-amber-200/60 font-mono text-[11px]">
+                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-warm-200 font-mono text-[11px]">
                           <div>
                             <span className="text-warm-500">Available Points:</span>
-                            <p className="font-bold text-amber-900">{selectedMember.points} pts (~{money(selectedMember.points / 100)})</p>
+                            <p className="font-bold text-warm-900">{selectedMember.points} pts (~{money(selectedMember.points / 100)})</p>
                           </div>
                           <div>
                             <span className="text-warm-500">Tier Perk:</span>
-                            <p className="font-bold text-emerald-800">
+                            <p className="font-bold text-warm-800">
                               {selectedMember.discount_percent > 0 ? `${selectedMember.discount_percent}% Discount (${selectedMember.tier})` : '1x pt per $1 spent'}
                             </p>
                           </div>
@@ -1132,15 +1123,16 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
 
                         {/* Paid Annual Membership (Maison Privé) Badge */}
                         {selectedMember.membership?.is_prive && (
-                          <div className="rounded-xl bg-[#242024] p-2.5 text-[#F5EBDD] flex items-center justify-between shadow-xs border border-[#C8B084]/45">
+                          <div className="rounded-xl bg-[#FAF7F0] p-2.5 text-[#2B231D] flex items-center justify-between border border-[#D4BC8D]">
                             <div className="flex items-center gap-2">
                               <span className="text-sm">👑</span>
                               <div>
-                                <p className="font-bold text-[11px] tracking-wide text-[#F5EBDD]">Maison Privé Member</p>
-                                <p className="text-[9px] text-[#DFC9A6]">Priority Concierge &amp; Welcome Drinks</p>
+                                <p className="font-bold text-[11px] tracking-wide text-[#2B231D]">Maison Privé Member</p>
+                                <p className="text-[10px] text-[#7A6340]">Priority Concierge &amp; Welcome Drinks</p>
                               </div>
                             </div>
-                            <span className="text-[10px] font-mono text-[#E8D5B5] uppercase bg-[#352F35] px-2 py-0.5 rounded-full border border-[#C8B084]/40">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-emerald-800 uppercase bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                               Active
                             </span>
                           </div>
@@ -1148,10 +1140,10 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
 
                         {/* Birthday Month Notice */}
                         {selectedMember.birthday_info?.is_birthday_month && (
-                          <div className="rounded-xl bg-amber-50 border border-amber-300 p-2 text-[11px] text-amber-900 flex items-center gap-2">
+                          <div className="rounded-xl bg-white border border-warm-200 p-2.5 text-[11px] text-warm-800 flex items-center gap-2">
                             <span>🎂</span>
                             <div>
-                              <span className="font-bold">Birthday Month: </span>
+                              <span className="font-bold text-warm-900">Birthday Month: </span>
                               <span>{selectedMember.birthday_info?.available_reward?.description || 'Complimentary Birthday Dessert available!'}</span>
                             </div>
                           </div>
@@ -1174,16 +1166,16 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
 
                         {/* Automatic Member Promo Dishes Savings */}
                         {memberPromoSavings.items.length > 0 && (
-                          <div className="rounded-xl bg-purple-100/90 p-2.5 border border-purple-200 text-xs text-purple-950 space-y-1">
-                            <div className="flex items-center justify-between font-bold text-[11px] text-purple-900">
+                          <div className="rounded-xl bg-white p-2.5 border border-warm-200 text-xs text-warm-800 space-y-1">
+                            <div className="flex items-center justify-between font-bold text-[11px] text-warm-900">
                               <span>✦ Member Exclusive Dish Savings</span>
-                              <span className="font-mono text-purple-900 font-bold">-{money(memberPromoDiscountAmount)}</span>
+                              <span className="font-mono text-brand font-bold">-{money(memberPromoDiscountAmount)}</span>
                             </div>
-                            <div className="space-y-0.5 text-[10px] text-purple-800">
+                            <div className="space-y-0.5 text-[10px] text-warm-600">
                               {memberPromoSavings.items.map((it, idx) => (
-                                <div key={idx} className="flex justify-between">
+                                <div key={idx} className="flex justify-between gap-2">
                                   <span className="truncate">{it.qty}× {it.name}</span>
-                                  <span className="font-mono font-semibold">({money(it.regularPrice)} → {money(it.promoPrice)})</span>
+                                  <span className="font-mono font-semibold text-warm-800 shrink-0">({money(it.regularPrice)} → {money(it.promoPrice)})</span>
                                 </div>
                               ))}
                             </div>
@@ -1192,8 +1184,8 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
 
                         {/* Redeem Points Option (Min 200 pts) */}
                         {selectedMember.points >= 200 && (
-                          <div className="pt-1 border-t border-amber-200/60 flex items-center justify-between text-xs">
-                            <span className="font-medium text-warm-700">Redeem Points:</span>
+                          <div className="pt-2 border-t border-warm-200 flex items-center justify-between text-xs gap-2">
+                            <span className="font-medium text-warm-700 shrink-0">Redeem Points:</span>
                             <div className="flex flex-wrap gap-1.5 justify-end">
                               {[0, 200, 500, 1000, 2000].filter(pts => pts === 0 || pts <= selectedMember.points).map(pts => (
                                 <button
@@ -1202,8 +1194,8 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                                   onClick={() => setPointsToRedeem(pts)}
                                   className={`rounded-lg px-2 py-0.5 font-mono text-[10px] font-bold transition ${
                                     pointsToRedeem === pts
-                                      ? 'bg-amber-900 text-white shadow-2xs'
-                                      : 'bg-white border border-amber-300 text-amber-900 hover:bg-amber-100'
+                                      ? 'bg-brand text-white shadow-2xs'
+                                      : 'bg-white border border-warm-200 text-warm-700 hover:bg-warm-100'
                                   }`}
                                 >
                                   {pts === 0 ? 'None' : `-${money(pts / 100)} (${pts}p)`}
@@ -1214,7 +1206,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                         )}
 
                         {/* Points to earn preview */}
-                        <div className="pt-1 text-[11px] font-mono text-warm-500 flex justify-between">
+                        <div className="pt-1 border-t border-warm-200/70 text-[11px] font-mono text-warm-600 flex justify-between">
                           <span>Points to earn on this bill:</span>
                           <span className="font-bold text-brand">+{pointsToEarn} pts</span>
                         </div>
@@ -1616,7 +1608,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
             </h3>
 
             <p className="text-[8px] uppercase tracking-[0.25em] mt-0.5">
-              MONACO
+              CAMBODIA
             </p>
 
             <div className="my-1 text-[9px] tracking-[0.3em]">
@@ -1624,10 +1616,10 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
             </div>
 
             <p className="text-[9px]">
-              12 Avenue des Spélugues
+              Toul Kork, Phnom Penh
             </p>
             <p className="text-[9px]">
-              Monaco · Tel: +377 67 67 67
+              Cambodia · Tel: +855 67 67 67
             </p>
 
           </div>
@@ -1694,11 +1686,16 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
             </div>
 
             {(lastSettlement ? lastSettlement.discountAmount : totalDiscount) > 0 && (
-              <div className="flex justify-between">
-                <span>
-                  Discount {lastSettlement?.discountNote ? `(${lastSettlement.discountNote})` : ""}
-                </span>
-                <span>-{money(lastSettlement ? lastSettlement.discountAmount : totalDiscount)}</span>
+              <div className="space-y-0.5">
+                <div className="flex justify-between gap-2">
+                  <span>Discount</span>
+                  <span className="shrink-0">-{money(lastSettlement ? lastSettlement.discountAmount : totalDiscount)}</span>
+                </div>
+                {lastSettlement?.discountNote && (
+                  <p className="text-[10px] leading-snug break-words">
+                    ({lastSettlement.discountNote})
+                  </p>
+                )}
               </div>
             )}
 
@@ -1710,7 +1707,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                 </div>
                 {(lastSettlement.member.membership?.is_prive || lastSettlement.member.is_maison_prive) && (
                   <div className="flex justify-between text-[10px] font-bold text-black">
-                    <span>👑 Annual Plan</span>
+                    <span>Annual Plan</span>
                     <span>Maison Privé</span>
                   </div>
                 )}
@@ -1799,7 +1796,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
             </p>
 
             <div className="pt-2 text-[8px] tracking-[0.25em] font-bold">
-              MOLS MAISON · MONACO
+              MOLS MAISON · CAMBODIA
             </div>
 
             <p className="text-[8px] tracking-wider pt-0.5">
@@ -2127,7 +2124,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                               <div className="text-[11px] font-mono text-warm-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
                                 <span>🎂 {m.date_of_birth}</span>
                                 {m.birthday_info?.is_birthday_month && (
-                                  <span className="rounded bg-rose-100 text-rose-800 px-1.5 py-0.2 text-[9px] font-bold uppercase">
+                                  <span className="rounded bg-rose-100 text-rose-800 px-2 py-0.5 text-[9px] font-bold leading-normal uppercase">
                                     Birthday Month
                                   </span>
                                 )}

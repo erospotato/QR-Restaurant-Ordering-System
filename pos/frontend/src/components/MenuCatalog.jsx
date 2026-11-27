@@ -212,7 +212,7 @@ export default function MenuCatalog({ menu = [], reload = () => {} }) {
                     </div>
                   )}
                   {item.is_member_exclusive && (
-                    <span className="absolute top-1 left-1 rounded bg-purple-900/90 text-[9px] font-bold text-amber-300 px-1 py-0.2 shadow-xs">
+                    <span className="absolute top-1 left-1 rounded bg-purple-900/90 text-[9px] font-bold text-amber-300 px-1.5 py-0.5 leading-normal shadow-xs">
                       VIP
                     </span>
                   )}
@@ -220,31 +220,31 @@ export default function MenuCatalog({ menu = [], reload = () => {} }) {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="font-display text-sm sm:text-base font-semibold text-warm-900 truncate">{item.name}</span>
+                    <span className="font-display text-sm sm:text-base font-semibold leading-snug text-warm-900 truncate">{item.name}</span>
                     {item.is_member_exclusive && (
-                      <span className="rounded bg-purple-900 text-amber-200 px-1.5 py-0.2 text-[9px] font-bold border border-purple-700">
+                      <span className="rounded bg-purple-900 text-amber-200 px-2 py-0.5 text-[9px] font-bold leading-normal border border-purple-700">
                         {item.promo_badge || 'MEMBER EXCLUSIVE'}
                       </span>
                     )}
                     {item.is_top_sale && (
-                      <span className="rounded bg-rose-50 px-1.5 py-0.2 text-[10px] font-medium text-rose-700 border border-rose-200">
+                      <span className="rounded bg-rose-50 px-2 py-0.5 text-[10px] font-medium leading-normal text-rose-700 border border-rose-200">
                         Top
                       </span>
                     )}
                     {item.is_signature && (
-                      <span className="rounded bg-amber-50 px-1.5 py-0.2 text-[10px] font-medium text-amber-800 border border-amber-200">
+                      <span className="rounded bg-amber-50 px-2 py-0.5 text-[10px] font-medium leading-normal text-amber-800 border border-amber-200">
                         Chef
                       </span>
                     )}
                   </div>
-                  <div className="font-mono text-xs sm:text-sm font-medium text-warm-600 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                  <div className="font-mono text-xs sm:text-sm font-medium text-warm-600 mt-1 flex items-center gap-1.5 flex-wrap">
                     <span>{item.category}</span>
                     <span>·</span>
                     {item.is_member_exclusive && item.promo_price ? (
                       <span className="flex items-center gap-1.5">
                         <span className="line-through text-warm-400 text-xs">{money(item.price)}</span>
                         <span className="font-bold text-brand">{money(item.promo_price)}</span>
-                        <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-1 py-0.2 rounded">
+                        <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-1.5 py-0.5 leading-normal rounded">
                           {item.min_member_tier || 'Member'}+
                         </span>
                       </span>

@@ -103,7 +103,7 @@ export default function KitchenDisplay({ orders = [], reload = () => {} }) {
                     {stg.title}
                   </span>
                 </div>
-                <span className="font-mono text-xs font-semibold text-warm-800 rounded-full bg-white px-2 py-0.2 shadow-xs">
+                <span className="font-mono text-xs font-semibold text-warm-800 rounded-full bg-white px-2.5 py-0.5 shadow-xs">
                   {list.length}
                 </span>
               </div>
@@ -120,24 +120,24 @@ export default function KitchenDisplay({ orders = [], reload = () => {} }) {
                   return (
                     <div
                       key={ticket.id}
-                      className={`flex flex-col justify-between rounded-2xl bg-white p-4 shadow-card border transition ${
+                      className={`flex flex-col justify-between gap-3 rounded-2xl bg-white p-4 sm:p-5 shadow-card border transition ${
                         isUrgent ? 'border-rose-400 ring-2 ring-rose-200' : 'border-warm-200'
                       }`}
                     >
                       {/* Ticket Header */}
-                      <div className="flex items-center justify-between border-b border-warm-100 pb-2">
+                      <div className="flex items-center justify-between gap-2 border-b border-warm-100 pb-3">
                         <div className="flex items-center gap-2">
-                          <span className="font-display text-base font-bold text-warm-900">
+                          <span className="font-display text-base font-bold leading-snug text-warm-900">
                             Table #{ticket.table}
                           </span>
                           {ticket.addon && (
-                            <span className="rounded bg-purple-50 px-1.5 py-0.2 text-[10px] font-medium text-purple-700 border border-purple-200">
+                            <span className="rounded-md bg-purple-50 px-2 py-0.5 text-[10px] font-semibold leading-normal text-purple-700 border border-purple-200">
                               Round 2+
                             </span>
                           )}
                         </div>
                         <span
-                          className={`font-mono text-xs font-medium px-2 py-0.5 rounded-md ${
+                          className={`font-mono text-xs font-medium px-2.5 py-1 rounded-md leading-normal ${
                             isUrgent ? 'bg-rose-100 text-rose-800 font-bold' : 'bg-warm-100 text-warm-800'
                           }`}
                         >
@@ -146,7 +146,7 @@ export default function KitchenDisplay({ orders = [], reload = () => {} }) {
                       </div>
 
                       {/* Dishes Checklist */}
-                      <div className="my-2.5 space-y-1.5">
+                      <div className="space-y-2.5">
                         {ticket.items.map((it, idx) => {
                           const key = `${ticket.id}_${it.id ?? idx}`
                           const isStruck = !!struckItems[key]
@@ -154,37 +154,50 @@ export default function KitchenDisplay({ orders = [], reload = () => {} }) {
                             <div
                               key={it.id ?? idx}
                               onClick={() => toggleItemStrike(key)}
-                              className={`cursor-pointer rounded-xl p-2 transition border ${
+                              className={`cursor-pointer rounded-xl p-3 sm:p-3.5 transition border ${
                                 isStruck
                                   ? 'bg-warm-50 border-warm-200 line-through opacity-50'
-                                  : 'bg-warm-50/50 border-warm-200 hover:bg-warm-100/70'
+                                  : 'bg-warm-50/60 border-warm-200 hover:bg-warm-100/70'
                               }`}
                             >
-                              <div className="flex items-center justify-between gap-2 text-xs sm:text-sm">
-                                <span className="font-medium text-warm-900 flex items-center gap-1.5 flex-wrap">
-                                  <span className="inline-block w-7 font-mono text-brand font-semibold">
+                              <div className="flex items-start justify-between gap-3 text-xs sm:text-sm">
+                                <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                                  <span className="w-7 shrink-0 font-mono text-brand font-bold leading-snug pt-0.5">
                                     {it.qty}×
                                   </span>
-                                  <span>{it.name}</span>
-                                  {(it.name?.includes('🎁') || it.price === 0) ? (
-                                    <span className="rounded bg-emerald-100 text-emerald-900 border border-emerald-300 text-[9px] font-bold px-1.5 py-0.2">
-                                      🎁 Complimentary Reward
-                                    </span>
-                                  ) : it.is_member_exclusive ? (
-                                    <span className="rounded bg-purple-100 text-purple-900 border border-purple-200 text-[9px] font-bold px-1.5 py-0.2">
-                                      ✦ VIP Exclusive
-                                    </span>
-                                  ) : null}
-                                </span>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <span className="font-mono text-[10px] font-semibold text-warm-500">
+                                  <div className="min-w-0 flex-1 space-y-2">
+                                    <p className="font-medium text-warm-900 leading-snug break-words">
+                                      {it.name}
+                                    </p>
+                                    {(it.name?.includes('🎁') || it.price === 0 || it.is_member_exclusive) && (
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        {(it.name?.includes('🎁') || it.price === 0) ? (
+                                          <span className="inline-flex items-center rounded-md bg-emerald-100 text-emerald-900 border border-emerald-300 text-[10px] font-bold leading-normal tracking-wide px-2 py-0.5">
+                                            🎁 Complimentary Reward
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center rounded-md bg-purple-100 text-purple-900 border border-purple-200 text-[10px] font-bold leading-normal tracking-wide px-2 py-0.5">
+                                            ✦ VIP Exclusive
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                    {it.notes && (
+                                      <p className="inline-block rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium leading-snug tracking-normal text-amber-900 break-words">
+                                        {it.notes}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                                  <span className="rounded-md bg-warm-100 px-2 py-0.5 font-mono text-[10px] font-semibold tracking-wider text-warm-600 leading-normal">
                                     {isStruck ? 'DONE' : 'PLATING'}
                                   </span>
                                   <button
                                     type="button"
                                     onClick={(e) => handleRemoveItem(e, ticket.table, it)}
                                     disabled={removingItemId === it.id}
-                                    className="h-6 w-6 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-40 flex items-center justify-center text-xs transition"
+                                    className="h-7 w-7 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-40 flex items-center justify-center text-xs transition"
                                     title="Remove unavailable item"
                                     aria-label={`Remove ${it.name}`}
                                   >
@@ -192,11 +205,6 @@ export default function KitchenDisplay({ orders = [], reload = () => {} }) {
                                   </button>
                                 </div>
                               </div>
-                              {it.notes && (
-                                <p className="mt-0.5 ml-7 text-xs font-medium text-amber-900 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 inline-block">
-                                  {it.notes}
-                                </p>
-                              )}
                             </div>
                           )
                         })}
@@ -204,7 +212,7 @@ export default function KitchenDisplay({ orders = [], reload = () => {} }) {
 
                       {/* Ticket notes */}
                       {ticket.notes && (
-                        <div className="mb-2.5 rounded-xl bg-sky-50 border border-sky-200 p-2 text-xs text-sky-950">
+                        <div className="rounded-xl bg-sky-50 border border-sky-200 px-3 py-2.5 text-xs leading-relaxed text-sky-950">
                           <span className="font-semibold">Instructions:</span> {ticket.notes}
                         </div>
                       )}
@@ -212,7 +220,7 @@ export default function KitchenDisplay({ orders = [], reload = () => {} }) {
                       {/* Advance Button */}
                       <button
                         onClick={() => advance(ticket.id, stg.next)}
-                        className="w-full rounded-xl bg-brand py-2.5 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-xs hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white active:scale-[0.98] transition"
+                        className="w-full rounded-xl bg-brand py-2.5 sm:py-3 px-4 font-display text-xs sm:text-sm font-semibold tracking-wider text-white uppercase shadow-xs hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white active:scale-[0.98] transition"
                       >
                         {stg.btn} →
                       </button>

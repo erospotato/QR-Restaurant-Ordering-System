@@ -147,3 +147,68 @@ export function useLive(isStaff, onUpdate) {
     }
   }, [isStaff])
 }
+
+/**
+ * Print a thermal receipt sized cleanly to the printer/paper roll height and width
+ * rather than stretching onto an A4/Letter PDF sheet.
+ */
+export function printThermalReceipt(elementId = 'printable-receipt') {
+  const source = document.getElementById(elementId)
+  if (!source) {
+    window.print()
+    return
+  }
+
+  const prevMount = document.getElementById('print-receipt-mount')
+  if (prevMount) prevMount.remove()
+  const prevStyle = document.getElementById('thermal-print-page-style')
+  if (prevStyle) prevStyle.remove()
+
+  const mount = document.createElement('div')
+  mount.id = 'print-receipt-mount'
+  mount.style.position = 'fixed'
+  mount.style.left = '-9999px'
+  mount.style.top = '0'
+  mount.style.width = '74mm'
+  mount.style.padding = '3mm 4mm'
+  mount.style.boxSizing = 'border-box'
+  mount.style.background = '#ffffff'
+  mount.style.color = '#000000'
+  mount.style.zIndex = '-1'
+
+  const clone = source.cloneNode(true)
+  clone.id = 'printable-receipt-clone'
+  clone.style.width = '100%'
+  clone.style.maxWidth = '100%'
+  mount.appendChild(clone)
+  document.body.appendChild(mount)
+
+  // Measure rendered receipt height at 74mm width so @page height matches exact receipt content
+  const measuredPx = Math.max(mount.scrollHeight, mount.getBoundingClientRect().height)
+  const heightMm = Math.max(70, Math.ceil((measuredPx * 25.4) / 96) + 8)
+
+  const style = document.createElement('style')
+  style.id = 'thermal-print-page-style'
+  style.textContent = `@page { size: 80mm ${heightMm}mm; margin: 0; }`
+  document.head.appendChild(style)
+
+  document.body.dataset.printingReceipt = 'true'
+
+  let cleaned = false
+  const cleanup = () => {
+    if (cleaned) return
+    cleaned = true
+    delete document.body.dataset.printingReceipt
+    const m = document.getElementById('print-receipt-mount')
+    if (m) m.remove()
+    const s = document.getElementById('thermal-print-page-style')
+    if (s) s.remove()
+  }
+
+  window.addEventListener('afterprint', cleanup, { once: true })
+  setTimeout(cleanup, 60000)
+
+  requestAnimationFrame(() => {
+    window.print()
+  })
+}

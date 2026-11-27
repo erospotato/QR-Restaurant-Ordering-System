@@ -158,7 +158,7 @@ export default function SalesDashboard({ sales, reload }) {
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-warm-900">Table #{o.table}</span>
-                      <span className="rounded bg-warm-200 px-1.5 py-0.2 font-mono text-[10px] font-semibold uppercase text-warm-800">
+                      <span className="rounded bg-warm-200 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-warm-800">
                         {o.payment_method}
                       </span>
                     </div>

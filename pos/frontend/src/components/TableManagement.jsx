@@ -137,7 +137,7 @@ export default function TableManagement({ tables = [], reload = () => {}, isMana
                     Table #{t.number}
                   </span>
                   <span
-                    className={`font-mono text-[10px] font-semibold px-1.5 py-0.2 rounded ${
+                    className={`font-mono text-[10px] font-semibold px-2 py-0.5 rounded ${
                       t.status === 'occupied' ? 'bg-amber-100 text-amber-800' : 'bg-warm-100 text-warm-700'
                     }`}
                   >

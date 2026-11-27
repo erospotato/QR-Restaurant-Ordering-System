@@ -330,7 +330,7 @@ export default function InventoryManagement({ data = {}, reload = () => {}, canM
             <span>📋</span>
             <span>Reorder Sheet</span>
             {stats.criticalCount > 0 && (
-              <span className="rounded-full bg-rose-600 px-1.5 py-0.2 font-mono text-[10px] text-white">
+              <span className="rounded-full bg-rose-600 px-2 py-0.5 font-mono text-[10px] leading-normal text-white">
                 {stats.criticalCount}
               </span>
             )}
@@ -1184,7 +1184,7 @@ function ReorderSheetModal({ items, totalCost, copied, onCopy, onClose }) {
                       <td className="p-3 font-medium text-warm-900">
                         {i.name}
                         {i.status === 'out_of_stock' && (
-                          <span className="ml-1.5 rounded-full bg-rose-100 px-1.5 py-0.2 font-mono text-[9px] font-bold text-rose-700">
+                          <span className="ml-1.5 rounded-full bg-rose-100 px-2 py-0.5 font-mono text-[9px] font-bold leading-normal text-rose-700">
                             DEPLETED
                           </span>
                         )}

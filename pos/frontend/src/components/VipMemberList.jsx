@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
-import { api, money } from "../lib";
+import { api, money, printThermalReceipt } from "../lib";
 import { Icons } from "./Icons";
 import { useAuth } from "../context/AuthContext";
 import logo from "../assets/imgs/logo.jpg";
@@ -60,18 +60,32 @@ export default function VipMemberList() {
   });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
+  const [editConfirmAction, setEditConfirmAction] = useState(null); // null | 'close' | 'save'
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [deleteError, setDeleteError] = useState("");
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addForm, setAddForm] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    date_of_birth: "",
+    notes: "",
+  });
+  const [addLoading, setAddLoading] = useState(false);
+  const [addError, setAddError] = useState("");
+  const [toastMessage, setToastMessage] = useState("");
 
   useEffect(() => {
-    if (!activeMemberDetails && !priveEnrollTarget && !priveReceipt && !editTarget && !deleteTarget && !showAddModal) return;
+    if (!activeMemberDetails && !priveEnrollTarget && !priveReceipt && !editTarget && !editConfirmAction && !deleteTarget && !showAddModal) return;
     const handleKeyDown = (e) => {
       if (e.key !== "Escape") return;
-      if (deleteTarget) {
+      if (editConfirmAction) {
+        setEditConfirmAction(null);
+      } else if (deleteTarget) {
         setDeleteTarget(null);
       } else if (editTarget) {
-        setEditTarget(null);
+        setEditConfirmAction("close");
       } else if (showAddModal) {
         setShowAddModal(false);
       } else if (priveReceipt) {
@@ -84,18 +98,7 @@ export default function VipMemberList() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeMemberDetails, priveEnrollTarget, priveReceipt, editTarget, deleteTarget, showAddModal]);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [addForm, setAddForm] = useState({
-    name: "",
-    phone: "",
-    email: "",
-    date_of_birth: "",
-    notes: "",
-  });
-  const [addLoading, setAddLoading] = useState(false);
-  const [addError, setAddError] = useState("");
-  const [toastMessage, setToastMessage] = useState("");
+  }, [activeMemberDetails, priveEnrollTarget, priveReceipt, editTarget, editConfirmAction, deleteTarget, showAddModal]);
 
   // Points Adjustment State in Drawer
   const [adjustPointsVal, setAdjustPointsVal] = useState("");
@@ -214,6 +217,7 @@ export default function VipMemberList() {
     if (e) e.stopPropagation();
     if (!canManageMembers || !member) return;
     setEditTarget(member);
+    setEditConfirmAction(null);
     setEditError("");
     setEditForm({
       full_name: member.name || member.full_name || "",
@@ -230,8 +234,13 @@ export default function VipMemberList() {
     });
   };
 
-  // Save Updated Member Info (Owner / Admin / Manager only)
-  const handleEditMember = async (e) => {
+  const requestCloseEditModal = () => {
+    if (editSaving) return;
+    setEditConfirmAction("close");
+  };
+
+  // Validate Updated Member Info, then prompt confirmation popup
+  const handleEditMember = (e) => {
     e.preventDefault();
     if (!canManageMembers || !editTarget || editSaving) return;
     if (!editForm.full_name.trim() || !editForm.phone.trim()) {
@@ -253,6 +262,16 @@ export default function VipMemberList() {
       setEditError("New PIN / password must be at least 4 characters.");
       return;
     }
+
+    setEditError("");
+    setEditConfirmAction("save");
+  };
+
+  // Execute Save after Double-Check Confirmation (Owner / Admin / Manager only)
+  const executeSaveEditMember = async () => {
+    if (!canManageMembers || !editTarget || editSaving) return;
+    const parsedPoints = parseFloat(editForm.points_balance);
+    const parsedSpending = parseFloat(editForm.lifetime_spending);
 
     setEditSaving(true);
     setEditError("");
@@ -279,12 +298,14 @@ export default function VipMemberList() {
       });
       const updatedId = editTarget.id;
       showToast(res.message || `Updated ${payload.full_name}'s VIP profile.`);
+      setEditConfirmAction(null);
       setEditTarget(null);
       fetchMembers();
       if (activeMemberDetails?.id === updatedId) {
         openMemberDetails(updatedId);
       }
     } catch (err) {
+      setEditConfirmAction(null);
       setEditError(err.message || "Failed to update VIP member info.");
     } finally {
       setEditSaving(false);
@@ -438,18 +459,7 @@ export default function VipMemberList() {
   };
 
   const handlePrintPriveReceipt = () => {
-    let style = document.getElementById("thermal-print-page-style");
-    if (!style) {
-      style = document.createElement("style");
-      style.id = "thermal-print-page-style";
-      style.textContent = `@page { size: 80mm auto; margin: 0; }`;
-      document.head.appendChild(style);
-    }
-    window.print();
-    setTimeout(() => {
-      const el = document.getElementById("thermal-print-page-style");
-      if (el) el.remove();
-    }, 2000);
+    printThermalReceipt("printable-receipt");
   };
 
   // Handle Create Reward
@@ -482,15 +492,15 @@ export default function VipMemberList() {
       case "vip":
         return {
           label: "VIP Elite",
-          badge: `${baseBadge} bg-[#332442] text-[#E8D5B5] border-[#6B527F]`,
+          badge: `${baseBadge} bg-[#1C1917] text-[#F5D77F] border-[#C9A23F]`,
           perk: "10% Off + 2x Pts",
-          color: "espresso",
+          color: "vip",
         };
 
       case "gold":
         return {
           label: "Gold Tier",
-          badge: `${baseBadge} bg-[#E8D09B] text-[#654817] border-[#C9A65D]`,
+          badge: `${baseBadge} bg-[#F7E5AE] text-[#7D580C] border-[#D9B14C]`,
           perk: "5% Off + 1.5x Pts",
           color: "gold",
         };
@@ -498,7 +508,7 @@ export default function VipMemberList() {
       case "silver":
         return {
           label: "Silver Tier",
-          badge: `${baseBadge} bg-[#C9CBCD] text-[#3F454A] border-[#A5AAAE]`,
+          badge: `${baseBadge} bg-[#E2E6EA] text-[#3F4852] border-[#B4BCC4]`,
           perk: "3% Off + 1.25x Pts",
           color: "silver",
         };
@@ -506,7 +516,7 @@ export default function VipMemberList() {
       default:
         return {
           label: "Bronze Tier",
-          badge: `${baseBadge} bg-[#D9B99A] text-[#68452D] border-[#B88E68]`,
+          badge: `${baseBadge} bg-[#EBD3BE] text-[#7A441D] border-[#C6936B]`,
           perk: "1x Pts per $1",
           color: "bronze",
         };
@@ -531,7 +541,7 @@ export default function VipMemberList() {
           </div>
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="font-display text-2xl font-bold tracking-tight text-warm-900 sm:text-3xl">
+              <h1 className="font-display text-2xl font-bold tracking-normal leading-snug text-warm-900 sm:text-3xl">
                 Loyalty &amp; Membership Hub
               </h1>
               <span className="rounded-full bg-purple-100 px-3 py-0.5 text-xs font-bold uppercase tracking-wider text-purple-900 border border-purple-200">
@@ -942,7 +952,7 @@ export default function VipMemberList() {
           <div className="rounded-3xl bg-[#242024] text-[#F5EBDD] p-6 shadow-xl border border-[#C8B084]/40 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="space-y-1.5 max-w-xl">
               <div className="flex items-center gap-2">
-                <h3 className="font-display text-2xl font-bold tracking-tight text-white">Maison Privé Annual Plan ($49.99)</h3>
+                <h3 className="font-display text-2xl font-bold tracking-normal leading-snug text-white">Maison Privé Annual Plan ($49.99)</h3>
               </div>
               <p className="text-xs sm:text-sm text-stone-300 leading-relaxed">
                 Paid annual subscription providing priority reservations, welcome drinks, birthday desserts, and exclusive seasonal tastings.
@@ -1109,29 +1119,29 @@ export default function VipMemberList() {
           <div className="rounded-3xl border border-warm-200 bg-white p-6 shadow-xs space-y-4">
             <h4 className="font-display text-base font-bold text-warm-900">Spending Tier Progression &amp; Multipliers</h4>
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs font-mono">
-              <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-1.5">
-                <span className="font-bold text-stone-800 text-sm">🥉 Bronze</span>
-                <p className="text-stone-600">$0 – $199.99 Spend</p>
-                <p className="font-bold text-stone-900">0% Discount · 1x Multiplier</p>
-                <p className="text-[11px] text-stone-500">Birthday: Complimentary dessert</p>
+              <div className="p-4 rounded-2xl bg-[#FBF4EC] border border-[#DFBE9F] space-y-1.5">
+                <span className="font-bold text-[#8A4E24] text-sm">🥉 Bronze</span>
+                <p className="text-[#9E643B]">$0 – $199.99 Spend</p>
+                <p className="font-bold text-[#5E3416]">0% Discount · 1x Multiplier</p>
+                <p className="text-[11px] text-[#9E643B]">Birthday: Complimentary dessert</p>
               </div>
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5">
-                <span className="font-bold text-slate-800 text-sm">🥈 Silver</span>
+                <span className="font-bold text-slate-700 text-sm">🥈 Silver</span>
                 <p className="text-slate-600">$200 – $399.99 Spend</p>
                 <p className="font-bold text-slate-900">3% Discount · 1.25x Multiplier</p>
                 <p className="text-[11px] text-slate-500">Birthday: Dessert + 100 bonus pts</p>
               </div>
-              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 space-y-1.5">
-                <span className="font-bold text-amber-800 text-sm">⭐ Gold</span>
-                <p className="text-amber-600">$400 – $599.99 Spend</p>
-                <p className="font-bold text-amber-900">5% Discount · 1.5x Multiplier</p>
-                <p className="text-[11px] text-amber-500">Birthday: Dessert + signature drink</p>
+              <div className="p-4 rounded-2xl bg-[#FEF9E7] border border-[#ECD078] space-y-1.5">
+                <span className="font-bold text-[#A16D0A] text-sm">⭐ Gold</span>
+                <p className="text-[#9E7015]">$400 – $599.99 Spend</p>
+                <p className="font-bold text-[#6E4904]">5% Discount · 1.5x Multiplier</p>
+                <p className="text-[11px] text-[#9E7015]">Birthday: Dessert + signature drink</p>
               </div>
-              <div className="p-4 rounded-2xl bg-purple-50 border border-purple-200 space-y-1.5">
-                <span className="font-bold text-purple-900 text-sm">💎 VIP</span>
-                <p className="text-purple-600">$600+ Lifetime Spend</p>
-                <p className="font-bold text-purple-950">10% Discount · 2.0x Multiplier</p>
-                <p className="text-[11px] text-purple-500">Birthday: Premium dessert + drink</p>
+              <div className="p-4 rounded-2xl bg-[#181512] border border-[#D4AF37] space-y-1.5">
+                <span className="font-bold text-[#F5D77F] text-sm">✦ VIP</span>
+                <p className="text-[#E6C770]/85">$600+ Lifetime Spend</p>
+                <p className="font-bold text-white">10% Discount · 2.0x Multiplier</p>
+                <p className="text-[11px] text-[#E6C770]/80">Birthday: Premium dessert + drink</p>
               </div>
             </div>
             <div className="p-4 rounded-2xl bg-warm-50 border border-warm-200 text-xs text-warm-700 space-y-1 leading-relaxed">
@@ -1614,7 +1624,7 @@ export default function VipMemberList() {
       {/* Edit VIP Member Modal (Owner / Admin / Manager) */}
       {editTarget && canManageMembers && (
         <div
-          onClick={() => setEditTarget(null)}
+          onClick={requestCloseEditModal}
           className="fixed inset-0 z-[60] flex items-center justify-center bg-warm-950/60 p-4 backdrop-blur-xs"
           role="dialog"
           aria-modal="true"
@@ -1634,7 +1644,7 @@ export default function VipMemberList() {
               </div>
               <button
                 type="button"
-                onClick={() => setEditTarget(null)}
+                onClick={requestCloseEditModal}
                 className="rounded-full p-1.5 text-warm-400 hover:bg-warm-100 hover:text-warm-700 font-bold"
                 aria-label="Close edit modal"
               >
@@ -1780,11 +1790,7 @@ export default function VipMemberList() {
               <div className="flex items-center justify-between gap-2 pt-2 border-t border-warm-100">
                 <button
                   type="button"
-                  onClick={() => {
-                    const m = editTarget;
-                    setEditTarget(null);
-                    openDeleteModal(m);
-                  }}
+                  onClick={() => openDeleteModal(editTarget)}
                   className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition"
                 >
                   Delete Member
@@ -1792,7 +1798,7 @@ export default function VipMemberList() {
                 <div className="flex gap-2 flex-1 justify-end">
                   <button
                     type="button"
-                    onClick={() => setEditTarget(null)}
+                    onClick={requestCloseEditModal}
                     className="rounded-xl bg-warm-100 px-4 py-2.5 text-xs sm:text-sm font-semibold text-warm-700 hover:bg-warm-200 transition"
                   >
                     Cancel
@@ -1807,6 +1813,117 @@ export default function VipMemberList() {
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Double-Check Popup Before Closing or Saving Edit VIP Member Modal */}
+      {editConfirmAction && editTarget && canManageMembers && (
+        <div
+          onClick={() => !editSaving && setEditConfirmAction(null)}
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-warm-950/65 p-4 backdrop-blur-xs"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl space-y-4 border ${
+              editConfirmAction === "close" ? "border-amber-200" : "border-warm-200"
+            }`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p
+                  className={`text-[11px] font-mono uppercase tracking-wider font-bold ${
+                    editConfirmAction === "close" ? "text-amber-700" : "text-brand"
+                  }`}
+                >
+                  {editConfirmAction === "close" ? "Confirm Close" : "Confirm Update"}
+                </p>
+                <h3 className="font-display text-lg font-bold text-warm-900 mt-0.5">
+                  {editConfirmAction === "close"
+                    ? "Close Edit VIP Member?"
+                    : `Save Changes to ${editForm.full_name || "Member"}?`}
+                </h3>
+              </div>
+              <button
+                type="button"
+                disabled={editSaving}
+                onClick={() => setEditConfirmAction(null)}
+                className="rounded-full p-1.5 text-warm-400 hover:bg-warm-100 hover:text-warm-700 font-bold"
+                aria-label="Return to editing"
+              >
+                ✕
+              </button>
+            </div>
+
+            {editConfirmAction === "close" ? (
+              <p className="text-xs sm:text-sm text-warm-600 leading-relaxed">
+                Are you sure you want to close{" "}
+                <strong className="text-warm-900">{editTarget.name || editTarget.full_name}</strong>
+                &apos;s edit form? Any unsaved changes will not be applied.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-warm-600 leading-relaxed">
+                  Please double-check the updated member details before saving:
+                </p>
+                <div className="rounded-2xl border border-warm-200 bg-warm-50 p-3.5 text-xs space-y-1.5">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-warm-500">Name:</span>
+                    <span className="font-semibold text-warm-900 truncate">{editForm.full_name}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-warm-500">Phone:</span>
+                    <span className="font-mono font-semibold text-warm-900">{editForm.phone}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-warm-500">Tier &amp; Status:</span>
+                    <span className="font-semibold text-warm-900">
+                      {editForm.loyalty_tier.toUpperCase()} · {editForm.status.toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-warm-500">Points / Spend:</span>
+                    <span className="font-mono font-semibold text-warm-900">
+                      {Number(editForm.points_balance || 0).toLocaleString()} pts · {money(editForm.lifetime_spending)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2.5 pt-1">
+              <button
+                type="button"
+                disabled={editSaving}
+                onClick={() => setEditConfirmAction(null)}
+                className="flex-1 rounded-xl border border-warm-300 bg-white py-2.5 text-xs sm:text-sm font-semibold text-warm-700 hover:bg-warm-100 transition"
+              >
+                Keep Editing
+              </button>
+              {editConfirmAction === "close" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditConfirmAction(null);
+                    setEditTarget(null);
+                  }}
+                  className="flex-1 rounded-xl bg-amber-600 py-2.5 text-xs sm:text-sm font-bold text-white shadow-md hover:bg-amber-700 transition"
+                >
+                  Yes, Close
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={editSaving}
+                  onClick={executeSaveEditMember}
+                  className="flex-1 rounded-xl bg-brand py-2.5 text-xs sm:text-sm font-bold text-white shadow-md hover:bg-brand-dark disabled:opacity-50 transition"
+                >
+                  {editSaving ? "Saving..." : "Yes, Save"}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -2114,13 +2231,13 @@ export default function VipMemberList() {
                   MOLS MAISON
                 </h3>
                 <p className="text-[8px] uppercase tracking-[0.25em] mt-0.5">
-                  MONACO · MEMBERS CLUB
+                  CAMBODIA · MEMBERS CLUB
                 </p>
                 <div className="my-1 text-[9px] tracking-[0.3em]">
                   ✦ · ✦ · ✦
                 </div>
-                <p className="text-[9px]">12 Avenue des Spélugues</p>
-                <p className="text-[9px]">Monaco · Tel: +377 67 67 67</p>
+                <p className="text-[9px]">Toul Kork, Phnom Penh</p>
+                <p className="text-[9px]">Cambodia · Tel: +855 67 67 67</p>
               </div>
 
               {/* Receipt Info */}
