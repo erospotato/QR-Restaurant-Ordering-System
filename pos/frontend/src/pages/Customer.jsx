@@ -1,14 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import {
-  api,
-  formatImageUrl,
-  money,
-  playChime,
-  timeStr,
-  useLive,
-  inp,
-} from "../lib";
+import { api, formatImageUrl, money, timeStr, useLive, inp } from "../lib";
 
 import logo from "../assets/imgs/logo.jpg";
 
@@ -287,6 +279,79 @@ function getItemPreferenceConfig(dish) {
   };
 }
 
+function getDishCulinaryDetails(dish) {
+  if (!dish) return null;
+  const cat = (dish.category || "").toLowerCase();
+  const name = (dish.name || "").toLowerCase();
+
+  const isDrink =
+    cat.includes("drink") ||
+    cat.includes("beverage") ||
+    cat.includes("coffee") ||
+    cat.includes("tea") ||
+    name.includes("mocktail") ||
+    name.includes("cocktail") ||
+    name.includes("juice") ||
+    name.includes("latte") ||
+    name.includes("fizz") ||
+    name.includes("sparkler") ||
+    name.includes("smoothie");
+
+  const isDessert =
+    cat.includes("dessert") ||
+    cat.includes("sweet") ||
+    cat.includes("cake") ||
+    name.includes("cake") ||
+    name.includes("ice cream") ||
+    name.includes("sorbet") ||
+    name.includes("chocolate") ||
+    name.includes("creme") ||
+    name.includes("tart");
+
+  if (isDrink) {
+    return {
+      type: "drink",
+      badges: [
+        "🍹 House Crafted",
+        "🧊 Freshly Poured",
+        "🌿 Natural Botanicals",
+      ],
+      sensoryTitle: "Flavor & Sensory Notes",
+      sensoryTags: ["Crisp & Refreshing", "Citrus Botanicals", "Velvety Sip"],
+      chefNote:
+        "House-crafted artisan beverage blended with premium ingredients.",
+    };
+  }
+
+  if (isDessert) {
+    return {
+      type: "dessert",
+      badges: [
+        "🍰 Artisan Pastry",
+        "✨ Freshly Baked Daily",
+        "🍓 Fine Accents",
+      ],
+      sensoryTitle: "Tasting Profile",
+      sensoryTags: ["Rich & Velvety", "Balanced Sweetness", "Gourmet Finish"],
+      chefNote:
+        "Delicately prepared by our pastry team using artisanal techniques.",
+    };
+  }
+
+  return {
+    type: "savory",
+    badges: [
+      "👨‍🍳 Chef Curated",
+      "🔥 Cooked Fresh to Order",
+      "🍽️ Fine Selection",
+    ],
+    sensoryTitle: "Culinary Highlights",
+    sensoryTags: ["Umami Rich", "Fresh Produce", "Signature Seasoning"],
+    chefNote:
+      "Prepared fresh upon order in our kitchen with premium culinary ingredients.",
+  };
+}
+
 export default function Customer() {
   const { token } = useParams();
   const navigate = useNavigate();
@@ -296,6 +361,9 @@ export default function Customer() {
   const [invalid, setInvalid] = useState(false);
   const [sessionSettled, setSessionSettled] = useState(false);
   const [settledTable, setSettledTable] = useState(null);
+  const [settledReceipt, setSettledReceipt] = useState(null);
+  const [showSettledReceipt, setShowSettledReceipt] = useState(false);
+  const receiptAutoOpenedRef = useRef(false);
   const [loading, setLoading] = useState(true);
 
   // Welcoming splash loading experience
@@ -441,18 +509,61 @@ export default function Customer() {
 
   // Membership & Rewards State for Customer
   const [showMemberModal, setShowMemberModal] = useState(false);
+  const memberModalBodyRef = useRef(null);
+
+  useEffect(() => {
+    if (!showMemberModal) return;
+    const scrollY = window.scrollY;
+    const prev = {
+      overflow: document.body.style.overflow,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      left: document.body.style.left,
+      right: document.body.style.right,
+      width: document.body.style.width,
+    };
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+    return () => {
+      document.body.style.overflow = prev.overflow;
+      document.body.style.position = prev.position;
+      document.body.style.top = prev.top;
+      document.body.style.left = prev.left;
+      document.body.style.right = prev.right;
+      document.body.style.width = prev.width;
+      window.scrollTo(0, scrollY);
+    };
+  }, [showMemberModal]);
+
   const [activeMemberTab, setActiveMemberTab] = useState("profile"); // "profile" | "prive" | "rewards" | "history"
   const [customerRewardsData, setCustomerRewardsData] = useState(null);
   const [customerTxData, setCustomerTxData] = useState([]);
   const [loyaltyActionLoading, setLoyaltyActionLoading] = useState(false);
-  const [memberNumberInput, setMemberNumberInput] = useState(() => localStorage.getItem("mols_customer_member_number") || "");
+  const [memberNumberInput, setMemberNumberInput] = useState(
+    () => localStorage.getItem("mols_customer_member_number") || "",
+  );
   const [memberPasswordInput, setMemberPasswordInput] = useState("");
   const [memberData, setMemberData] = useState(null);
   const [memberLoading, setMemberLoading] = useState(false);
   const [memberError, setMemberError] = useState("");
   const [showRegisterInCustomer, setShowRegisterInCustomer] = useState(false);
-  const [customerRegisterForm, setCustomerRegisterForm] = useState({ name: "", phone: "", email: "", password: "" });
+  const [customerRegisterForm, setCustomerRegisterForm] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    password: "",
+  });
   const [customerRegisterLoading, setCustomerRegisterLoading] = useState(false);
+
+  useEffect(() => {
+    if (memberModalBodyRef.current) {
+      memberModalBodyRef.current.scrollTop = 0;
+    }
+  }, [memberData?.id]);
 
   const fetchCustomerLoyaltyDetails = useCallback(async (customerId) => {
     if (!customerId) return;
@@ -480,12 +591,17 @@ export default function Customer() {
     try {
       const res = await api(`/customers/${memberData.id}/redeem`, {
         method: "POST",
-        body: { reward_id: rewardId },
+        body: {
+          reward_id: rewardId,
+          token: token,
+          table_number: tableInfo?.table,
+        },
       });
       alert(res.message || "Reward redeemed successfully!");
       const updated = await api(`/customers/${memberData.id}`);
       setMemberData(updated);
       fetchCustomerLoyaltyDetails(memberData.id);
+      await loadData();
     } catch (err) {
       alert(err.message || "Failed to redeem reward.");
     } finally {
@@ -495,7 +611,11 @@ export default function Customer() {
 
   const handleSubscribeMaisonPrive = async () => {
     if (!memberData?.id) return;
-    if (!window.confirm("Join Maison Privé for $49.99/year to enjoy VIP table reservations, complimentary welcome drink, birthday dessert & seasonal menus?")) {
+    if (
+      !window.confirm(
+        "Join Maison Privé for $49.99/year to enjoy VIP table reservations, complimentary welcome drink, birthday dessert & seasonal menus?",
+      )
+    ) {
       return;
     }
     setLoyaltyActionLoading(true);
@@ -516,56 +636,65 @@ export default function Customer() {
   };
 
   // Verify member credentials requiring BOTH membership number/phone AND password
-  const verifyMember = useCallback(async (numToVerify, passToVerify) => {
-    const targetNum = numToVerify || memberNumberInput;
-    const targetPass = passToVerify !== undefined ? passToVerify : memberPasswordInput;
+  const verifyMember = useCallback(
+    async (numToVerify, passToVerify) => {
+      const targetNum = numToVerify || memberNumberInput;
+      const targetPass =
+        passToVerify !== undefined ? passToVerify : memberPasswordInput;
 
-    if (!targetNum || !targetNum.trim()) {
-      setMemberError("Please enter your registered phone or membership number.");
-      return null;
-    }
-    if (!targetPass || !targetPass.trim()) {
-      setMemberError("Please enter your membership password or PIN.");
-      return null;
-    }
-
-    setMemberLoading(true);
-    setMemberError("");
-    try {
-      const res = await api("/members/verify", {
-        method: "POST",
-        body: {
-          number: targetNum.trim(),
-          password: targetPass.trim(),
-        },
-      });
-      const member = res.member || res;
-      setMemberData(member);
-      localStorage.setItem("mols_customer_member_number", targetNum.trim());
-      localStorage.setItem("mols_customer_member_phone", member.phone);
-      setMemberPasswordInput("");
-
-      // Auto-sync customer membership to cashier POS for this table session
-      if (token && member?.id) {
-        try {
-          await api(`/tables/${token}/link-member`, {
-            method: "POST",
-            body: { customer_id: member.id },
-          });
-        } catch (linkErr) {
-          console.warn("Table member auto-sync warning:", linkErr);
-        }
+      if (!targetNum || !targetNum.trim()) {
+        setMemberError(
+          "Please enter your username, phone number, or membership #.",
+        );
+        return null;
+      }
+      if (!targetPass || !targetPass.trim()) {
+        setMemberError("Please enter your membership password or PIN.");
+        return null;
       }
 
-      return member;
-    } catch (err) {
-      setMemberError(err.message || "Invalid membership number or password. Please try again.");
-      setMemberData(null);
-      return null;
-    } finally {
-      setMemberLoading(false);
-    }
-  }, [memberNumberInput, memberPasswordInput]);
+      setMemberLoading(true);
+      setMemberError("");
+      try {
+        const res = await api("/members/verify", {
+          method: "POST",
+          body: {
+            number: targetNum.trim(),
+            password: targetPass.trim(),
+          },
+        });
+        const member = res.member || res;
+        setMemberData(member);
+        localStorage.setItem("mols_customer_member_number", targetNum.trim());
+        localStorage.setItem("mols_customer_member_phone", member.phone);
+        setMemberPasswordInput("");
+
+        // Auto-sync customer membership to cashier POS for this table session
+        if (token && member?.id) {
+          try {
+            await api(`/tables/${token}/link-member`, {
+              method: "POST",
+              body: { customer_id: member.id },
+            });
+          } catch (linkErr) {
+            console.warn("Table member auto-sync warning:", linkErr);
+          }
+        }
+
+        return member;
+      } catch (err) {
+        setMemberError(
+          err.message ||
+            "Invalid membership number or password. Please try again.",
+        );
+        setMemberData(null);
+        return null;
+      } finally {
+        setMemberLoading(false);
+      }
+    },
+    [memberNumberInput, memberPasswordInput],
+  );
 
   const handleCustomerRegister = async (e) => {
     if (e) e.preventDefault();
@@ -573,7 +702,10 @@ export default function Customer() {
       alert("Please provide both name and phone number.");
       return;
     }
-    if (!customerRegisterForm.password || customerRegisterForm.password.length < 4) {
+    if (
+      !customerRegisterForm.password ||
+      customerRegisterForm.password.length < 4
+    ) {
       alert("Please choose a password or PIN with at least 4 characters.");
       return;
     }
@@ -604,11 +736,16 @@ export default function Customer() {
         }
         if (exclusivePromptDish) {
           addToCartDirect(exclusivePromptDish, res.member);
-          alert(`Welcome to MOLS MAISON, ${res.member.name}! "${exclusivePromptDish.name}" has been unlocked and added to your order.`);
+          alert(
+            `Welcome to MOLS MAISON, ${res.member.name}! "${exclusivePromptDish.name}" has been unlocked and added to your order.`,
+          );
           setExclusivePromptDish(null);
           setShowMemberModal(false);
         } else {
-          alert(res.message || "Welcome to MOLS MAISON Rewards! 50 bonus points added.");
+          alert(
+            res.message ||
+              "Welcome to MOLS MAISON Rewards! 50 bonus points added.",
+          );
         }
       }
     } catch (err) {
@@ -635,6 +772,13 @@ export default function Customer() {
       if (t?.settled) {
         setSessionSettled(true);
         if (t.table) setSettledTable(t.table);
+        if (t.receipt) {
+          setSettledReceipt(t.receipt);
+          if (!receiptAutoOpenedRef.current) {
+            receiptAutoOpenedRef.current = true;
+            setShowSettledReceipt(true);
+          }
+        }
         setCart({});
         setActiveItemModal(null);
         setShowCartDrawer(false);
@@ -656,10 +800,20 @@ export default function Customer() {
       setMenu(m || []);
       setOrders(o || []);
       setSessionSettled(false);
+      setSettledReceipt(null);
+      setShowSettledReceipt(false);
+      receiptAutoOpenedRef.current = false;
     } catch (err) {
       if (err.status === 403 || err.data?.settled) {
         setSessionSettled(true);
         if (err.data?.table) setSettledTable(err.data.table);
+        if (err.data?.receipt) {
+          setSettledReceipt(err.data.receipt);
+          if (!receiptAutoOpenedRef.current) {
+            receiptAutoOpenedRef.current = true;
+            setShowSettledReceipt(true);
+          }
+        }
         setCart({});
         setActiveItemModal(null);
         setShowCartDrawer(false);
@@ -746,7 +900,6 @@ export default function Customer() {
       }));
     }
 
-    playChime("ticket");
     setItemAddedToast({
       name: activeItemModal.name,
       spice: finalPref,
@@ -855,6 +1008,7 @@ export default function Customer() {
         setMemberPasswordInput("");
         localStorage.removeItem("mols_customer_member_number");
         localStorage.removeItem("mols_customer_member_phone");
+        loadData();
       }
       alert(e.message || "Failed to call staff");
     }
@@ -882,13 +1036,15 @@ export default function Customer() {
         body: {
           token,
           notes: orderLevelNote.trim() || null,
-          member_phone: memberData?.phone || localStorage.getItem("mols_customer_member_phone") || null,
+          member_phone:
+            memberData?.phone ||
+            localStorage.getItem("mols_customer_member_phone") ||
+            null,
           member_id: memberData?.id || null,
           items: itemsPayload,
         },
       });
 
-      playChime("ticket");
       setCart({});
       setOrderLevelNote("");
       setShowConfirmModal(false);
@@ -908,6 +1064,7 @@ export default function Customer() {
         setMemberPasswordInput("");
         localStorage.removeItem("mols_customer_member_number");
         localStorage.removeItem("mols_customer_member_phone");
+        loadData();
       }
       alert(err.message || "Order failed. Please try again.");
     } finally {
@@ -957,6 +1114,17 @@ export default function Customer() {
     return orders.reduce((sum, o) => sum + (o.total || 0), 0);
   }, [orders]);
 
+  const totalRedeemedDiscounts = useMemo(() => {
+    return (tableInfo?.redeemed_discounts || []).reduce(
+      (sum, d) => sum + (d.discount_amount || 0),
+      0,
+    );
+  }, [tableInfo?.redeemed_discounts]);
+
+  const netSessionBalance = useMemo(() => {
+    return Math.max(0, totalBillAllRounds - totalRedeemedDiscounts);
+  }, [totalBillAllRounds, totalRedeemedDiscounts]);
+
   if (sessionSettled) {
     const tableNum = settledTable || tableInfo?.table;
     return (
@@ -992,8 +1160,22 @@ export default function Customer() {
               MOLS MAISON
             </span>
             {tableNum ? ` at Table #${tableNum}` : ""}! The bill for your table
-            has been settled and your dining loyalty points have been credited to your account.
+            has been settled and your dining loyalty points have been credited
+            to your account.
           </p>
+
+          {settledReceipt && (
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={() => setShowSettledReceipt(true)}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-warm-300 bg-warm-50 px-4 py-2.5 text-xs font-bold text-warm-800 hover:bg-warm-100 transition shadow-2xs"
+              >
+                <span>🧾</span>
+                <span>View Your Receipt</span>
+              </button>
+            </div>
+          )}
 
           <div className="mt-5 rounded-2xl bg-amber-50/80 p-4 text-xs text-amber-900 border border-amber-200/80 text-left space-y-2">
             <div className="flex items-center gap-2 font-semibold text-amber-950">
@@ -1001,33 +1183,40 @@ export default function Customer() {
               <span>Account Signed Out For Security</span>
             </div>
             <p className="text-amber-800 leading-relaxed text-[11px]">
-              You have been automatically signed out of your membership account for this table session to keep your account secure.
+              You have been automatically signed out of your membership account
+              for this table session to keep your account secure.
             </p>
-            <div className="pt-2 border-t border-amber-200/80 flex items-start gap-2 text-warm-800 font-medium">
-              <span>
-                To place new orders, please <strong>scan the physical QR code on your table</strong>. You can easily log back into your membership account once your new dining session begins!
-              </span>
-            </div>
           </div>
 
           <div className="mt-6">
             <div className="rounded-2xl border border-dashed border-warm-300 bg-warm-50/80 p-4 text-center">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-warm-100 text-warm-800 mb-2">
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                <svg
+                  className="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
+                  />
                 </svg>
               </div>
               <p className="font-semibold text-xs text-warm-900">
                 Rescan Required to Order Again
               </p>
               <p className="text-[11px] text-warm-500 mt-1 leading-relaxed">
-                Aim your smartphone camera at the table QR code to start a fresh dining session and re-login.
+                Aim your smartphone camera at the table QR code to start a fresh
+                dining session and re-login.
               </p>
               {tableNum && (
                 <div className="mt-3">
                   <a
                     href={`/scan/${tableNum}`}
-                    className="inline-flex items-center justify-center rounded-xl bg-warm-900 text-white font-display text-xs font-bold px-4 py-2 hover:bg-brand transition shadow-xs"
+                    className="inline-flex items-center justify-center rounded-xl bg-brand text-white font-display text-xs font-bold px-4 py-2 hover:bg-brand-dark transition shadow-xs"
                   >
                     Rescan Table #{tableNum}
                   </a>
@@ -1036,6 +1225,204 @@ export default function Customer() {
             </div>
           </div>
         </div>
+
+        {/* Settled Receipt Popup Modal for Customer */}
+        {showSettledReceipt && settledReceipt && (
+          <div
+            onClick={() => setShowSettledReceipt(false)}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-warm-950/75 p-4 backdrop-blur-xs animate-in fade-in duration-150"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl border border-warm-200 flex flex-col max-h-[90dvh] overflow-y-auto text-left"
+            >
+              <div
+                id="printable-receipt"
+                className="font-mono text-[11px] text-black space-y-2.5 w-full leading-relaxed"
+              >
+                {/* Restaurant Header */}
+                <div className="text-center pb-2.5 border-b-2 border-double border-black">
+                  <img
+                    src={logo}
+                    alt="MOLS MAISON"
+                    className="mx-auto h-12 w-12 object-contain rounded-full mb-1.5"
+                  />
+                  <p className="text-[8px] uppercase tracking-[0.3em]">
+                    An Exceptional Dining Experience
+                  </p>
+                  <h3 className="font-logo text-xl tracking-[0.16em] font-bold mt-0.5">
+                    MOLS MAISON
+                  </h3>
+                  <p className="text-[8px] uppercase tracking-[0.25em] mt-0.5">
+                    MONACO
+                  </p>
+                  <div className="my-1 text-[9px] tracking-[0.3em]">
+                    ✦ · ✦ · ✦
+                  </div>
+                  <p className="text-[9px]">12 Avenue des Spélugues</p>
+                  <p className="text-[9px]">Monaco · Tel: +377 67 67 67</p>
+                </div>
+
+                {/* Receipt Information */}
+                <div className="py-2 border-b border-dashed border-black space-y-1">
+                  <div className="flex justify-between font-bold">
+                    <span>RECEIPT</span>
+                    <span>#{settledReceipt.receipt_no || "0001"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Table Number</span>
+                    <span>#{settledReceipt.table || tableNum}</span>
+                  </div>
+                  {settledReceipt.customer_name && (
+                    <div className="flex justify-between">
+                      <span>Guest</span>
+                      <span className="font-semibold">{settledReceipt.customer_name}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span>Date</span>
+                    <span>
+                      {settledReceipt.date
+                        ? new Date(settledReceipt.date).toLocaleString()
+                        : new Date().toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Order Items */}
+                <div className="py-2 space-y-1.5 border-b border-dashed border-black">
+                  <div className="flex justify-between text-[9px] font-bold uppercase tracking-wider pb-0.5">
+                    <span>Item Description</span>
+                    <span>Amount</span>
+                  </div>
+                  {(settledReceipt.items || []).map((item, idx) => (
+                    <div key={idx} className="flex justify-between items-start gap-2 text-[11px]">
+                      <span className="flex-1 break-words">
+                        {item.qty} × {item.name}
+                      </span>
+                      <span className="shrink-0 font-medium">
+                        {money((item.price || 0) * (item.qty || 1))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Payment Summary */}
+                <div className="space-y-1.5 pt-1 text-[11px]">
+                  <div className="flex justify-between">
+                    <span>Subtotal</span>
+                    <span>{money(settledReceipt.subtotal)}</span>
+                  </div>
+
+                  {Number(settledReceipt.discount_amount) > 0 && (
+                    <div className="flex justify-between">
+                      <span>
+                        Discount{" "}
+                        {settledReceipt.discount_note
+                          ? `(${settledReceipt.discount_note})`
+                          : ""}
+                      </span>
+                      <span>-{money(settledReceipt.discount_amount)}</span>
+                    </div>
+                  )}
+
+                  {settledReceipt.member && (
+                    <div className="py-1 border-t border-dashed border-black my-1 space-y-0.5">
+                      <div className="flex justify-between font-bold">
+                        <span>✦ Member</span>
+                        <span>{settledReceipt.member.tier} Tier</span>
+                      </div>
+                      {settledReceipt.member.is_prive && (
+                        <div className="flex justify-between text-[10px] font-bold text-black">
+                          <span>👑 Annual Plan</span>
+                          <span>Maison Privé</span>
+                        </div>
+                      )}
+                      {settledReceipt.member.tier_upgraded && (
+                        <div className="text-[10px] font-bold text-center py-0.5 border border-dashed border-black rounded my-0.5">
+                          ★ TIER UPGRADE: Elevated to {settledReceipt.member.tier}! ★
+                        </div>
+                      )}
+                      <div className="flex justify-between text-[10px]">
+                        <span>Points Earned Today</span>
+                        <span className="font-bold">+{settledReceipt.member.points_earned || 0} pts</span>
+                      </div>
+                      {settledReceipt.member.points_redeemed > 0 && (
+                        <div className="flex justify-between text-[10px]">
+                          <span>Points Redeemed Today</span>
+                          <span className="font-bold">-{settledReceipt.member.points_redeemed} pts</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-[10px]">
+                        <span>Current Total Balance</span>
+                        <span className="font-bold">{settledReceipt.member.points_balance} pts</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Grand Total */}
+                <div className="border-y-2 border-double border-black py-2">
+                  <div className="flex justify-between items-center font-black text-xs sm:text-sm">
+                    <span>TOTAL PAID</span>
+                    <span>{money(settledReceipt.final_total)}</span>
+                  </div>
+                </div>
+
+                {/* Payment Details */}
+                <div className="py-1.5 space-y-1 text-[11px] border-b border-dashed border-black">
+                  <div className="flex justify-between">
+                    <span>Payment Method</span>
+                    <span className="uppercase font-bold">
+                      {settledReceipt.payment_method || "cash"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between font-bold">
+                    <span>Payment Status</span>
+                    <span>✓ PAID</span>
+                  </div>
+                  {(settledReceipt.payment_method || "cash") === "cash" && (
+                    <>
+                      <div className="flex justify-between">
+                        <span>Amount Tendered</span>
+                        <span>{money(settledReceipt.amount_tendered)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold">
+                        <span>Change Returned</span>
+                        <span>{money(settledReceipt.change_due)}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div className="text-center text-[9px] pt-1 space-y-0.5">
+                  <p className="font-bold">Merci · Thank You for Dining</p>
+                  <p>We look forward to welcoming you again.</p>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2 mt-5 pt-3 border-t border-warm-100 print:hidden">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="flex-1 rounded-xl border border-warm-300 bg-white py-2.5 text-xs sm:text-sm font-bold text-warm-800 hover:bg-warm-100 transition"
+                >
+                  Save / Print
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowSettledReceipt(false)}
+                  className="flex-1 rounded-xl bg-brand py-2.5 font-display text-xs sm:text-sm font-bold text-white shadow-md hover:bg-brand-dark transition"
+                >
+                  Close Receipt
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1051,7 +1438,8 @@ export default function Customer() {
             Connect to Dining Table
           </h1>
           <p className="mt-2 text-xs sm:text-sm text-warm-600 leading-relaxed">
-            Your previous session link has expired. Tap your table number below to start viewing the menu and placing orders:
+            Your previous session link has expired. Tap your table number below
+            to start viewing the menu and placing orders:
           </p>
 
           <div className="mt-5 grid grid-cols-5 gap-2">
@@ -1059,7 +1447,7 @@ export default function Customer() {
               <a
                 key={num}
                 href={`/scan/${num}`}
-                className="rounded-xl border border-warm-200 bg-warm-50 py-2.5 text-xs font-bold text-warm-800 hover:bg-warm-900 hover:text-white hover:border-warm-900 transition shadow-xs text-center"
+                className="rounded-xl border border-warm-200 bg-warm-50 py-2.5 text-xs font-bold text-warm-800 hover:bg-brand hover:text-white hover:border-brand transition shadow-xs text-center"
               >
                 #{num}
               </a>
@@ -1081,22 +1469,16 @@ export default function Customer() {
 
   if (showSplash || loading) {
     return (
-      <div className="relative min-h-screen flex flex-col justify-between overflow-hidden bg-gradient-to-b from-white via-rose-50/40 to-white text-warm-900 select-none animate-in fade-in duration-300">
+      <div className="relative min-h-screen flex flex-col justify-between overflow-hidden bg-white text-warm-900 select-none animate-in fade-in duration-300">
         {/* Ambient High-End Restaurant Background Artwork with White & Red Style */}
         <div className="absolute inset-0 z-0">
           <img
             src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1600&auto=format&fit=crop&q=80"
             alt="MOLS MAISON Ambience"
-            className="h-full w-full object-cover opacity-[0.08] mix-blend-multiply filter blur-[0.5px] scale-105"
+            className="h-full w-full object-cover opacity-[0.08] scale-105"
           />
-          {/* Soft White & Crimson Glow Overlays */}
-          <div className="absolute inset-0 bg-gradient-to-b from-white/95 via-white/80 to-white/95" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(225,29,72,0.06)_0%,transparent_70%)]" />
-
-          {/* Crimson & Rose Luxury Ambient Orbs */}
-          <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-96 h-96 bg-brand-500/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute bottom-10 right-4 w-72 h-72 bg-rose-500/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute top-1/3 -left-20 w-80 h-80 bg-brand-600/10 rounded-full blur-3xl pointer-events-none" />
+          {/* Soft White Overlays */}
+          <div className="absolute inset-0 bg-white/90" />
         </div>
 
         {/* Top Header Tag */}
@@ -1154,7 +1536,7 @@ export default function Customer() {
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-rose-100/70 border border-brand-200">
               <div
-                className="h-full bg-gradient-to-r from-rose-500 via-brand to-brand-dark transition-all duration-500 ease-out shadow-[0_0_12px_rgba(185,28,28,0.5)]"
+                className="h-full bg-brand rounded-full transition-all duration-500 ease-out"
                 style={{ width: `${splashProgress}%` }}
               />
             </div>
@@ -1218,7 +1600,11 @@ export default function Customer() {
             title="View Restaurant Welcome Splash"
           >
             <div className="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-2xl bg-white border border-warm-200/90 p-1 shadow-xs group-hover:scale-105 transition overflow-hidden">
-              <img src={logo} alt="MOLS MAISON" className="h-full w-full object-contain rounded-xl" />
+              <img
+                src={logo}
+                alt="MOLS MAISON"
+                className="h-full w-full object-contain rounded-xl"
+              />
             </div>
             <div className="min-w-0">
               <h1 className="font-logo text-xl sm:text-2xl font-normal tracking-wide text-warm-900 leading-none truncate">
@@ -1360,7 +1746,7 @@ export default function Customer() {
                   onClick={() => setSelectedCategory("promo")}
                   className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-xs sm:text-sm font-medium transition shadow-xs active:scale-95 ${
                     selectedCategory === "promo"
-                      ? "bg-gradient-to-r from-purple-800 to-amber-700 text-white font-semibold shadow-md"
+                      ? "bg-purple-900 text-white font-semibold shadow-md"
                       : "bg-purple-50 text-purple-900 border border-purple-200 hover:bg-brand hover:text-white hover:border-brand active:bg-brand-dark"
                   }`}
                 >
@@ -1419,7 +1805,7 @@ export default function Customer() {
                     setSearch("");
                     setSelectedCategory("all");
                   }}
-                  className="mt-3.5 rounded-xl bg-warm-900 px-4 py-2 text-xs sm:text-sm font-medium text-white shadow-xs hover:bg-warm-800 transition"
+                  className="mt-3.5 rounded-xl bg-brand px-4 py-2 text-xs sm:text-sm font-medium text-white shadow-xs hover:bg-brand-dark transition"
                 >
                   View All Menu
                 </button>
@@ -1459,7 +1845,7 @@ export default function Customer() {
                         />
                       ) : null}
                       <div
-                        className="h-full w-full items-center justify-center bg-gradient-to-br from-warm-100 to-warm-200 text-warm-400"
+                        className="h-full w-full items-center justify-center bg-warm-100 text-warm-400"
                         style={{ display: imageUrl ? "none" : "flex" }}
                       >
                         <Icons.Utensils />
@@ -1529,7 +1915,7 @@ export default function Customer() {
                         ) : (
                           <button
                             onClick={() => addToCartDirect(item)}
-                            className="shrink-0 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-xs transition active:scale-95 bg-warm-900 text-white hover:bg-brand hover:text-white active:bg-brand-dark"
+                            className="shrink-0 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-xs transition active:scale-95 bg-brand text-white hover:bg-brand-dark hover:text-white active:bg-brand-900"
                           >
                             <span>+ Order</span>
                           </button>
@@ -1544,10 +1930,14 @@ export default function Customer() {
                           title="Click to customize preferences"
                         >
                           <span className="truncate">
-                            <span className="font-semibold text-brand">Pref:</span>{" "}
+                            <span className="font-semibold text-brand">
+                              Pref:
+                            </span>{" "}
                             {inCart.spice} {inCart.notes}
                           </span>
-                          <span className="text-[10px] text-warm-400 ml-1 shrink-0">Edit →</span>
+                          <span className="text-[10px] text-warm-400 ml-1 shrink-0">
+                            Edit →
+                          </span>
                         </div>
                       )}
                     </div>
@@ -1566,11 +1956,17 @@ export default function Customer() {
                   Current Session Balance
                 </span>
                 <p className="font-mono text-2xl sm:text-3xl font-bold text-warm-900 leading-tight">
-                  {money(totalBillAllRounds)}
+                  {money(netSessionBalance)}
                 </p>
-                <p className="text-xs text-warm-500 mt-0.5">
+                <div className="text-xs text-warm-500 mt-0.5">
                   Table #{tableInfo?.table} · All ordered rounds combined
-                </p>
+                  {totalRedeemedDiscounts > 0 && (
+                    <span className="block text-emerald-700 font-semibold font-mono mt-0.5">
+                      Subtotal: {money(totalBillAllRounds)} · Points Vouchers: -
+                      {money(totalRedeemedDiscounts)}
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="flex flex-row sm:flex-col gap-2 shrink-0">
@@ -1589,6 +1985,50 @@ export default function Customer() {
               </div>
             </div>
 
+            {/* Redeemed Loyalty Rewards & Discounts applied to Bill */}
+            {tableInfo?.redeemed_discounts?.length > 0 && (
+              <div className="w-full rounded-3xl border border-emerald-200 bg-emerald-50/70 p-4 sm:p-5 shadow-xs space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base sm:text-lg">🎁</span>
+                    <div>
+                      <h4 className="font-display font-bold text-xs sm:text-sm text-emerald-950">
+                        Redeemed Loyalty Rewards Applied to Bill
+                      </h4>
+                      <p className="text-[11px] text-emerald-700">
+                        Discounts will be deducted automatically from this
+                        table's final payment
+                      </p>
+                    </div>
+                  </div>
+                  <span className="font-mono text-xs sm:text-sm font-bold text-emerald-800 bg-emerald-100/90 px-2.5 py-1 rounded-xl border border-emerald-300">
+                    -{money(totalRedeemedDiscounts)}
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  {tableInfo.redeemed_discounts.map((d, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between text-xs bg-white/90 border border-emerald-200/90 rounded-xl px-3.5 py-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-warm-900">
+                          {d.name}
+                        </span>
+                        <span className="text-[10px] text-warm-500 font-mono">
+                          ({d.points_redeemed || d.points} pts redeemed)
+                        </span>
+                      </div>
+                      <span className="font-mono font-bold text-emerald-700">
+                        -{money(d.discount_amount || d.amount)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* List of Ordered Tickets */}
             {orders.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-warm-300 bg-white p-10 text-center">
@@ -1604,7 +2044,7 @@ export default function Customer() {
                 </p>
                 <button
                   onClick={() => setTab("menu")}
-                  className="mt-3.5 rounded-xl bg-warm-900 px-4 py-2 text-xs sm:text-sm font-medium text-white shadow-xs hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white transition"
+                  className="mt-3.5 rounded-xl bg-brand px-4 py-2 text-xs sm:text-sm font-medium text-white shadow-xs hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white transition"
                 >
                   Explore Menu
                 </button>
@@ -1668,8 +2108,14 @@ export default function Customer() {
                                 <span className="shrink-0 font-mono font-bold text-warm-600">
                                   {it.qty}×
                                 </span>
-                                <span className="font-semibold text-warm-900 break-words leading-snug">
-                                  {it.name}
+                                <span className="font-semibold text-warm-900 break-words leading-snug flex items-center gap-1.5 flex-wrap">
+                                  <span>{it.name}</span>
+                                  {(it.name?.includes("🎁") ||
+                                    it.price === 0) && (
+                                    <span className="rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold px-1.5 py-0.2">
+                                      VIP Loyalty Reward (Free)
+                                    </span>
+                                  )}
                                 </span>
                               </div>
                               {it.notes && (
@@ -1781,13 +2227,15 @@ export default function Customer() {
         >
           <div
             style={{
-              transform: `translateY(${Math.max(sheetExpanded ? -10 : 0, sheetDragY)}px)`,
+              transform: `translateY(${Math.max(sheetExpanded ? -6 : 0, sheetDragY)}px)`,
               transition: isDraggingSheet
                 ? "none"
                 : "transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), max-height 0.28s ease, height 0.28s ease",
             }}
-            className={`w-full max-w-md flex flex-col rounded-t-3xl sm:rounded-3xl bg-white shadow-2xl overflow-hidden ${
-              sheetExpanded ? "h-[94vh] max-h-[94vh]" : "max-h-[82vh]"
+            className={`w-full max-w-md flex flex-col rounded-t-3xl sm:rounded-3xl bg-white shadow-2xl overflow-hidden transition-all duration-300 ${
+              sheetExpanded
+                ? "h-[92vh] sm:h-[88vh] max-h-[92vh]"
+                : "max-h-[82vh] h-auto"
             }`}
           >
             {/* Responsive Drag & Pull Handle Bar */}
@@ -1803,14 +2251,24 @@ export default function Customer() {
               <div className="w-14 sm:w-16 h-1.5 rounded-full bg-warm-300 group-hover:bg-warm-400 transition-colors" />
               <div className="flex items-center gap-1.5 text-[10px] font-mono font-medium text-warm-400 mt-1 select-none">
                 <span className="text-[10px]">↕</span>
-                <span>{sheetExpanded ? "Push down to collapse" : "Pull up to expand / Push down a little"}</span>
+                <span>
+                  {sheetExpanded
+                    ? "Push down to collapse"
+                    : "Pull up to expand / Push down a little"}
+                </span>
               </div>
             </div>
 
             {/* Scrollable Dish Details & Customizer Body */}
             <div className="overflow-y-auto flex-1 thin-scrollbar">
-              {/* Modal Image Header */}
-              <div className="relative aspect-[16/9] max-h-56 w-full bg-warm-100 overflow-hidden">
+              {/* Modal Image Header (Responsive aspect ratio) */}
+              <div
+                className={`relative w-full bg-warm-100 overflow-hidden transition-all duration-300 ${
+                  sheetExpanded
+                    ? "aspect-[16/10] sm:aspect-[16/9] max-h-64 sm:max-h-72"
+                    : "aspect-[16/9] max-h-52"
+                }`}
+              >
                 {formatImageUrl(activeItemModal.image_url) ? (
                   <img
                     src={formatImageUrl(activeItemModal.image_url)}
@@ -1824,220 +2282,305 @@ export default function Customer() {
                 )}
                 <button
                   onClick={() => setActiveItemModal(null)}
-                  className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-xs hover:bg-black/80"
+                  className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-xs hover:bg-brand transition"
                 >
                   <Icons.Close />
                 </button>
               </div>
 
-            <div className="p-5 space-y-4">
-              <div>
-                <div className="flex items-start justify-between gap-2">
-                  <h2 className="font-display text-lg sm:text-xl font-bold text-warm-900">
-                    {activeItemModal.name}
-                  </h2>
-                  <span className="font-mono text-base sm:text-lg font-semibold text-brand shrink-0">
-                    {money(activeItemModal.price)}
-                  </span>
+              <div className="p-5 space-y-4">
+                <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <h2 className="font-display text-lg sm:text-xl font-bold text-warm-900">
+                      {activeItemModal.name}
+                    </h2>
+                    <span className="font-mono text-base sm:text-lg font-semibold text-brand shrink-0">
+                      {money(activeItemModal.price)}
+                    </span>
+                  </div>
+                  {activeItemModal.description && (
+                    <p className="mt-1.5 text-xs sm:text-sm text-warm-600 leading-relaxed">
+                      {activeItemModal.description}
+                    </p>
+                  )}
                 </div>
-                {activeItemModal.description && (
-                  <p className="mt-1.5 text-xs sm:text-sm text-warm-600 leading-relaxed">
-                    {activeItemModal.description}
-                  </p>
-                )}
-              </div>
 
-              {/* Preferences Customization: Radio Lists matching user reference style */}
-              {(() => {
-                const config = getItemPreferenceConfig(activeItemModal);
-                const unitPrice = activeItemModal.price;
-                const isAlreadyInCart = (cart[activeItemModal.id]?.qty || 0) > 0;
-
-                return (
-                  <div className="space-y-4 pt-2 border-t border-warm-100">
-                    {/* Radio Preference Pickers */}
-                    {config.type === "drink" ? (
-                      <div className="space-y-3.5">
-                        {/* Ice Level Radio List */}
-                        <div>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-[11px] font-semibold tracking-wider text-warm-500 uppercase">
-                              Ice Level / Temperature
-                            </span>
-                            <span className="text-xs font-mono font-bold text-brand">
-                              {customPrefIce}
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Ice Level">
-                            {config.iceOptions.map((opt) => {
-                              const isChecked = customPrefIce === opt;
-                              return (
-                                <button
-                                  key={opt}
-                                  type="button"
-                                  onClick={() => setCustomPrefIce(opt)}
-                                  className={`cursor-pointer inline-flex items-center rounded-full px-3.5 py-1.5 text-xs font-medium transition select-none active:scale-95 ${
-                                    isChecked
-                                      ? "bg-warm-950 text-white shadow-xs border border-warm-950"
-                                      : "bg-white text-warm-700 hover:bg-warm-100 border border-warm-200"
-                                  }`}
-                                >
-                                  <span>{opt}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Sweetness Radio List */}
-                        <div>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-[11px] font-semibold tracking-wider text-warm-500 uppercase">
-                              Sweetness Level
-                            </span>
-                            <span className="text-xs font-mono font-bold text-brand">
-                              {customPrefSweet}
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Sweetness Level">
-                            {config.sweetOptions.map((opt) => {
-                              const isChecked = customPrefSweet === opt;
-                              return (
-                                <button
-                                  key={opt}
-                                  type="button"
-                                  onClick={() => setCustomPrefSweet(opt)}
-                                  className={`cursor-pointer inline-flex items-center rounded-full px-3.5 py-1.5 text-xs font-medium transition select-none active:scale-95 ${
-                                    isChecked
-                                      ? "bg-warm-950 text-white shadow-xs border border-warm-950"
-                                      : "bg-white text-warm-700 hover:bg-warm-100 border border-warm-200"
-                                  }`}
-                                >
-                                  <span>{opt}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
+                {/* Responsive Culinary Details & Sensory Profile (Displays responsively, fills space elegantly) */}
+                {(() => {
+                  const culinary = getDishCulinaryDetails(activeItemModal);
+                  if (!culinary) return null;
+                  return (
+                    <div className="rounded-2xl bg-warm-50/80 border border-warm-200/80 p-3 space-y-2.5">
+                      <div className="flex flex-wrap gap-1.5">
+                        {culinary.badges.map((b, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-0.5 text-[11px] font-medium text-warm-700 border border-warm-200 shadow-2xs"
+                          >
+                            {b}
+                          </span>
+                        ))}
                       </div>
-                    ) : (
-                      /* Single Preference Group: Doneness, Spice, Preparation, Serving */
+
+                      {sheetExpanded && (
+                        <div className="pt-1.5 border-t border-warm-200/60 space-y-1.5 animate-in fade-in duration-200">
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-warm-500 font-semibold block">
+                            {culinary.sensoryTitle}
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {culinary.sensoryTags.map((tag, idx) => (
+                              <span
+                                key={idx}
+                                className="inline-flex items-center rounded-full bg-warm-100 px-2.5 py-0.5 text-[11px] font-medium text-warm-800"
+                              >
+                                ✦ {tag}
+                              </span>
+                            ))}
+                          </div>
+                          <p className="text-[11px] text-warm-600 italic pt-0.5">
+                            {culinary.chefNote}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Preferences Customization: Radio Lists matching user reference style */}
+                {(() => {
+                  const config = getItemPreferenceConfig(activeItemModal);
+
+                  return (
+                    <div className="space-y-4 pt-2 border-t border-warm-100">
+                      {/* Radio Preference Pickers */}
+                      {config.type === "drink" ? (
+                        <div className="space-y-3.5">
+                          {/* Ice Level Radio List */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[11px] font-semibold tracking-wider text-warm-500 uppercase">
+                                Ice Level / Temperature
+                              </span>
+                              <span className="text-xs font-mono font-bold text-brand">
+                                {customPrefIce}
+                              </span>
+                            </div>
+                            <div
+                              className="flex flex-wrap gap-1.5"
+                              role="radiogroup"
+                              aria-label="Ice Level"
+                            >
+                              {config.iceOptions.map((opt) => {
+                                const isChecked = customPrefIce === opt;
+                                return (
+                                  <button
+                                    key={opt}
+                                    type="button"
+                                    onClick={() => setCustomPrefIce(opt)}
+                                    className={`cursor-pointer inline-flex items-center rounded-full px-3.5 py-1.5 text-xs font-medium transition select-none active:scale-95 ${
+                                      isChecked
+                                        ? "bg-warm-950 text-white shadow-xs border border-warm-950"
+                                        : "bg-white text-warm-700 hover:bg-warm-100 border border-warm-200"
+                                    }`}
+                                  >
+                                    <span>{opt}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Sweetness Radio List */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[11px] font-semibold tracking-wider text-warm-500 uppercase">
+                                Sweetness Level
+                              </span>
+                              <span className="text-xs font-mono font-bold text-brand">
+                                {customPrefSweet}
+                              </span>
+                            </div>
+                            <div
+                              className="flex flex-wrap gap-1.5"
+                              role="radiogroup"
+                              aria-label="Sweetness Level"
+                            >
+                              {config.sweetOptions.map((opt) => {
+                                const isChecked = customPrefSweet === opt;
+                                return (
+                                  <button
+                                    key={opt}
+                                    type="button"
+                                    onClick={() => setCustomPrefSweet(opt)}
+                                    className={`cursor-pointer inline-flex items-center rounded-full px-3.5 py-1.5 text-xs font-medium transition select-none active:scale-95 ${
+                                      isChecked
+                                        ? "bg-warm-950 text-white shadow-xs border border-warm-950"
+                                        : "bg-white text-warm-700 hover:bg-warm-100 border border-warm-200"
+                                    }`}
+                                  >
+                                    <span>{opt}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Single Preference Group: Doneness, Spice, Preparation, Serving */
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[11px] font-semibold tracking-wider text-warm-500 uppercase">
+                              {config.label}
+                            </span>
+                            <span className="text-xs font-mono font-bold text-brand">
+                              {customPrefOption}
+                            </span>
+                          </div>
+                          <div
+                            className="flex flex-wrap gap-1.5"
+                            role="radiogroup"
+                            aria-label={config.label}
+                          >
+                            {config.options.map((opt) => {
+                              const isChecked = customPrefOption === opt;
+                              return (
+                                <button
+                                  key={opt}
+                                  type="button"
+                                  onClick={() => setCustomPrefOption(opt)}
+                                  className={`cursor-pointer inline-flex items-center rounded-full px-3.5 py-1.5 text-xs font-medium transition select-none active:scale-95 ${
+                                    isChecked
+                                      ? "bg-warm-950 text-white shadow-xs border border-warm-950"
+                                      : "bg-white text-warm-700 hover:bg-warm-100 border border-warm-200"
+                                  }`}
+                                >
+                                  <span>{opt}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Special Instructions */}
                       <div>
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="text-[11px] font-semibold tracking-wider text-warm-500 uppercase">
-                            {config.label}
+                            Special Instructions
                           </span>
-                          <span className="text-xs font-mono font-bold text-brand">
-                            {customPrefOption}
+                          <span className="text-[10px] text-warm-400">
+                            Optional
                           </span>
                         </div>
-                        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={config.label}>
-                          {config.options.map((opt) => {
-                            const isChecked = customPrefOption === opt;
-                            return (
-                              <button
-                                key={opt}
-                                type="button"
-                                onClick={() => setCustomPrefOption(opt)}
-                                className={`cursor-pointer inline-flex items-center rounded-full px-3.5 py-1.5 text-xs font-medium transition select-none active:scale-95 ${
-                                  isChecked
-                                    ? "bg-warm-950 text-white shadow-xs border border-warm-950"
-                                    : "bg-white text-warm-700 hover:bg-warm-100 border border-warm-200"
-                                }`}
-                              >
-                                <span>{opt}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
+                        <input
+                          type="text"
+                          value={customPrefNotes}
+                          onChange={(e) => setCustomPrefNotes(e.target.value)}
+                          placeholder="e.g. sauce on side, less salty, no onions..."
+                          className="w-full rounded-xl border border-warm-200 bg-warm-50 px-3.5 py-2 text-xs text-warm-900 placeholder-warm-400 outline-none focus:border-warm-900 focus:bg-white transition"
+                        />
                       </div>
-                    )}
 
-                    {/* Special Instructions */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[11px] font-semibold tracking-wider text-warm-500 uppercase">
-                          Special Instructions
-                        </span>
-                        <span className="text-[10px] text-warm-400">Optional</span>
-                      </div>
-                      <input
-                        type="text"
-                        value={customPrefNotes}
-                        onChange={(e) => setCustomPrefNotes(e.target.value)}
-                        placeholder="e.g. sauce on side, less salty, no onions..."
-                        className="w-full rounded-xl border border-warm-200 bg-warm-50 px-3.5 py-2 text-xs text-warm-900 placeholder-warm-400 outline-none focus:border-warm-900 focus:bg-white transition"
-                      />
-                    </div>
-
-                    {/* Quantity Stepper & Price Calculation */}
-                    <div className="flex items-center justify-between pt-2 border-t border-warm-100">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-warm-500">
-                          Quantity
-                        </span>
-                        <div className="flex items-center gap-1 rounded-full bg-warm-100 p-1 border border-warm-200 shadow-inner">
-                          <button
-                            type="button"
-                            onClick={() => setCustomPrefQty((q) => Math.max(1, q - 1))}
-                            className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm font-bold text-warm-800 shadow-xs hover:bg-warm-200 active:scale-90 transition"
-                            title="Decrease quantity"
-                          >
-                            −
-                          </button>
-                          <span className="w-6 text-center font-mono text-sm font-bold text-warm-900">
-                            {customPrefQty}
+                      {/* Dietary Advisory Notice when expanded */}
+                      {sheetExpanded && (
+                        <div className="rounded-xl bg-amber-50/70 border border-amber-200/80 p-2.5 text-[11px] text-amber-900 flex items-start gap-2">
+                          <span className="text-amber-700 font-bold shrink-0">
+                            ℹ
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => setCustomPrefQty((q) => q + 1)}
-                            className="flex h-7 w-7 items-center justify-center rounded-full bg-warm-900 text-sm font-bold text-white shadow-xs hover:bg-brand active:scale-90 transition"
-                            title="Increase quantity"
-                          >
-                            +
-                          </button>
+                          <span>
+                            Freshly prepared in our kitchen. Please notify
+                            dining staff if you have any food allergies or
+                            specific dietary requests.
+                          </span>
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[10px] text-warm-400 font-mono">Item Total</div>
-                        <div className="font-mono text-base font-bold text-warm-900">
-                          {money(unitPrice * customPrefQty)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Add / Update CTA */}
-                    <div className="space-y-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={handleSaveCustomization}
-                        className="w-full rounded-2xl bg-warm-900 py-3.5 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-md hover:bg-brand active:scale-[0.98] transition flex items-center justify-between px-5"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Icons.Bag />
-                          <span>{isAlreadyInCart ? "Update in Order List" : "Add to Order List"}</span>
-                        </div>
-                        <span className="font-mono font-bold">{money(unitPrice * customPrefQty)}</span>
-                      </button>
-
-                      {isAlreadyInCart && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            adjustQty(activeItemModal.id, -cart[activeItemModal.id].qty);
-                            setActiveItemModal(null);
-                          }}
-                          className="w-full text-center py-1 text-xs font-medium text-rose-600 hover:text-rose-700 hover:underline transition"
-                        >
-                          Remove from Order List
-                        </button>
                       )}
                     </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* DOCKED STICKY BOTTOM ACTION BAR: Always at the bottom, NEVER leaves a blank space */}
+            {(() => {
+              const unitPrice = activeItemModal.price;
+              const isAlreadyInCart = (cart[activeItemModal.id]?.qty || 0) > 0;
+              return (
+                <div className="shrink-0 border-t border-warm-150 bg-white/95 backdrop-blur-xs px-5 py-3.5 sm:py-4 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-10 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-warm-500">
+                        Quantity
+                      </span>
+                      <div className="flex items-center gap-1 rounded-full bg-warm-100 p-1 border border-warm-200 shadow-inner">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCustomPrefQty((q) => Math.max(1, q - 1))
+                          }
+                          className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm font-bold text-warm-800 shadow-xs hover:bg-warm-200 active:scale-90 transition"
+                          title="Decrease quantity"
+                        >
+                          −
+                        </button>
+                        <span className="w-6 text-center font-mono text-sm font-bold text-warm-900">
+                          {customPrefQty}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setCustomPrefQty((q) => q + 1)}
+                          className="flex h-7 w-7 items-center justify-center rounded-full bg-brand text-sm font-bold text-white shadow-xs hover:bg-brand-dark active:scale-90 transition"
+                          title="Increase quantity"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] text-warm-400 font-mono">
+                        Item Total
+                      </div>
+                      <div className="font-mono text-base font-bold text-warm-900">
+                        {money(unitPrice * customPrefQty)}
+                      </div>
+                    </div>
                   </div>
-                );
-              })()}
-            </div>
-            </div>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveCustomization}
+                    className="w-full rounded-2xl bg-brand py-3.5 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-md hover:bg-brand-dark active:scale-[0.98] transition flex items-center justify-between px-5"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Icons.Bag />
+                      <span>
+                        {isAlreadyInCart
+                          ? "Update in Order List"
+                          : "Add to Order List"}
+                      </span>
+                    </div>
+                    <span className="font-mono font-bold">
+                      {money(unitPrice * customPrefQty)}
+                    </span>
+                  </button>
+
+                  {isAlreadyInCart && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        adjustQty(
+                          activeItemModal.id,
+                          -cart[activeItemModal.id].qty,
+                        );
+                        setActiveItemModal(null);
+                      }}
+                      className="w-full text-center py-0.5 text-xs font-medium text-rose-600 hover:text-rose-700 hover:underline transition"
+                    >
+                      Remove from Order List
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -2062,7 +2605,8 @@ export default function Customer() {
                   Review Table #{tableInfo?.table} Order
                 </h2>
                 <p className="text-xs text-warm-500 font-mono">
-                  {cartTotalQty} item{cartTotalQty !== 1 ? "s" : ""} in this round
+                  {cartTotalQty} item{cartTotalQty !== 1 ? "s" : ""} in this
+                  round
                 </p>
               </div>
               <button
@@ -2080,15 +2624,22 @@ export default function Customer() {
                   <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-warm-100 text-warm-500">
                     <Icons.Bag />
                   </div>
-                  <p className="text-sm font-medium text-warm-600">Your order list is empty</p>
-                  <p className="text-xs text-warm-400">Add dishes or drinks from the menu</p>
+                  <p className="text-sm font-medium text-warm-600">
+                    Your order list is empty
+                  </p>
+                  <p className="text-xs text-warm-400">
+                    Add dishes or drinks from the menu
+                  </p>
                 </div>
               ) : (
                 Object.entries(cart).map(([id, val]) => {
                   const dish = menu.find((m) => m.id === Number(id));
                   if (!dish) return null;
                   const config = getItemPreferenceConfig(dish);
-                  const drinkPrefs = config.type === "drink" ? getDrinkPreferences(val.spice, config) : null;
+                  const drinkPrefs =
+                    config.type === "drink"
+                      ? getDrinkPreferences(val.spice, config)
+                      : null;
 
                   return (
                     <div
@@ -2185,7 +2736,11 @@ export default function Customer() {
                                   {drinkPrefs.ice}
                                 </span>
                               </div>
-                              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Ice Level">
+                              <div
+                                className="flex flex-wrap gap-1.5"
+                                role="radiogroup"
+                                aria-label="Ice Level"
+                              >
                                 {config.iceOptions.map((opt) => {
                                   const isChecked = drinkPrefs.ice === opt;
                                   return (
@@ -2202,7 +2757,14 @@ export default function Customer() {
                                         name={`ice-${dish.id}`}
                                         value={opt}
                                         checked={isChecked}
-                                        onChange={() => updateDrinkIce(dish.id, opt, val.spice, config)}
+                                        onChange={() =>
+                                          updateDrinkIce(
+                                            dish.id,
+                                            opt,
+                                            val.spice,
+                                            config,
+                                          )
+                                        }
                                         className="sr-only"
                                       />
                                       <span>{opt}</span>
@@ -2222,7 +2784,11 @@ export default function Customer() {
                                   {drinkPrefs.sweet}
                                 </span>
                               </div>
-                              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Sweetness">
+                              <div
+                                className="flex flex-wrap gap-1.5"
+                                role="radiogroup"
+                                aria-label="Sweetness"
+                              >
                                 {config.sweetOptions.map((opt) => {
                                   const isChecked = drinkPrefs.sweet === opt;
                                   return (
@@ -2239,7 +2805,14 @@ export default function Customer() {
                                         name={`sweet-${dish.id}`}
                                         value={opt}
                                         checked={isChecked}
-                                        onChange={() => updateDrinkSweet(dish.id, opt, val.spice, config)}
+                                        onChange={() =>
+                                          updateDrinkSweet(
+                                            dish.id,
+                                            opt,
+                                            val.spice,
+                                            config,
+                                          )
+                                        }
                                         className="sr-only"
                                       />
                                       <span>{opt}</span>
@@ -2260,9 +2833,14 @@ export default function Customer() {
                                 {val.spice || config.options[0]}
                               </span>
                             </div>
-                            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={config.label || "Preference"}>
+                            <div
+                              className="flex flex-wrap gap-1.5"
+                              role="radiogroup"
+                              aria-label={config.label || "Preference"}
+                            >
                               {config.options.map((opt) => {
-                                const isChecked = (val.spice || config.options[0]) === opt;
+                                const isChecked =
+                                  (val.spice || config.options[0]) === opt;
                                 return (
                                   <label
                                     key={opt}
@@ -2277,7 +2855,9 @@ export default function Customer() {
                                       name={`pref-${dish.id}`}
                                       value={opt}
                                       checked={isChecked}
-                                      onChange={() => updateItemPreference(dish.id, opt)}
+                                      onChange={() =>
+                                        updateItemPreference(dish.id, opt)
+                                      }
                                       className="sr-only"
                                     />
                                     <span>{opt}</span>
@@ -2294,7 +2874,9 @@ export default function Customer() {
                             type="text"
                             placeholder="Special instructions (e.g. no onions, sauce on side)..."
                             value={val.notes || ""}
-                            onChange={(e) => updateItemNotes(dish.id, e.target.value)}
+                            onChange={(e) =>
+                              updateItemNotes(dish.id, e.target.value)
+                            }
                             className="w-full rounded-xl border border-warm-200 bg-white px-3 py-1.5 text-xs text-warm-800 placeholder-warm-400 outline-none focus:border-brand focus:ring-1 focus:ring-brand/20 transition font-normal"
                           />
                         </div>
@@ -2477,17 +3059,25 @@ export default function Customer() {
                   {orders.length} order ticket{orders.length > 1 ? "s" : ""}
                 </span>
               </div>
+              {totalRedeemedDiscounts > 0 && (
+                <div className="flex justify-between items-center text-xs text-emerald-700 font-medium">
+                  <span>Loyalty Vouchers Redeemed</span>
+                  <span className="font-mono font-bold">
+                    -{money(totalRedeemedDiscounts)}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between items-center border-t border-warm-200/80 pt-1.5">
                 <span className="text-xs sm:text-sm font-semibold text-warm-800">
                   Current Session Total
                 </span>
                 <span className="font-mono text-base sm:text-lg font-bold text-brand">
-                  {money(totalBillAllRounds)}
+                  {money(netSessionBalance)}
                 </span>
               </div>
             </div>
 
-            <p className="text-xs sm:text-sm text-warm-600 leading-relaxed text-left">
+            <p className="text-xs sm:text-sm text-warm-600 leading-5 tracking-normal [word-spacing:2px] text-left">
               Our floor team and cashier will be notified immediately to prepare
               your final check and bring the wireless payment terminal or paper
               receipt to your table.
@@ -2518,7 +3108,7 @@ export default function Customer() {
       {exclusivePromptDish && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-warm-950/70 p-4 backdrop-blur-xs">
           <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl text-center space-y-4 animate-in zoom-in-95 duration-200">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-700 to-amber-600 text-amber-100 shadow-md">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-900 text-amber-200 border border-purple-800 shadow-md">
               <span className="text-2xl font-bold">✦</span>
             </div>
 
@@ -2530,59 +3120,73 @@ export default function Customer() {
                 Exclusive for Members
               </h3>
               <p className="mt-1 text-xs text-warm-600 leading-relaxed">
-                <strong className="text-warm-900">{exclusivePromptDish.name}</strong> is reserved exclusively for registered MOLS MAISON members.
+                <strong className="text-warm-900">
+                  {exclusivePromptDish.name}
+                </strong>{" "}
+                is reserved exclusively for registered MOLS MAISON members.
               </p>
               {exclusivePromptDish.promo_price ? (
                 <div className="mt-2 rounded-xl bg-amber-50 border border-amber-200 p-2 text-xs text-amber-900 font-medium">
-                  Special promotional price: <strong className="font-mono text-brand text-sm">{money(exclusivePromptDish.promo_price)}</strong> (Regular {money(exclusivePromptDish.price)})
+                  Special promotional price:{" "}
+                  <strong className="font-mono text-brand text-sm">
+                    {money(exclusivePromptDish.promo_price)}
+                  </strong>{" "}
+                  (Regular {money(exclusivePromptDish.price)})
                 </div>
               ) : null}
             </div>
 
-            <div className="space-y-2.5 pt-1 text-left">
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const res = await verifyMember();
+                if (res && exclusivePromptDish) {
+                  addToCartDirect(exclusivePromptDish, res);
+                  setExclusivePromptDish(null);
+                }
+              }}
+              className="space-y-2.5 pt-1 text-left"
+            >
               <label className="block text-xs font-semibold text-warm-800">
-                Verify Member Account (Number &amp; Password):
+                Member Login (Username / Phone &amp; Password):
               </label>
               <div className="space-y-2">
                 <input
                   type="text"
-                  placeholder="Membership # or Phone (e.g. 08112233445)"
+                  required
+                  placeholder="Username, Phone, or Member #"
                   value={memberNumberInput}
                   onChange={(e) => {
                     setMemberNumberInput(e.target.value);
                     setMemberError("");
                   }}
-                  className="w-full rounded-xl border border-warm-300 bg-warm-50 px-3 py-2 text-xs font-mono outline-none focus:border-brand focus:bg-white"
+                  className="w-full rounded-xl border border-warm-300 bg-warm-50 px-3 py-2 text-[16px] sm:text-xs font-mono outline-none focus:border-brand focus:bg-white"
                 />
                 <input
                   type="password"
+                  required
                   placeholder="Password or PIN (default: 1234)"
                   value={memberPasswordInput}
                   onChange={(e) => {
                     setMemberPasswordInput(e.target.value);
                     setMemberError("");
                   }}
-                  className="w-full rounded-xl border border-warm-300 bg-warm-50 px-3 py-2 text-xs font-mono outline-none focus:border-brand focus:bg-white"
+                  className="w-full rounded-xl border border-warm-300 bg-warm-50 px-3 py-2 text-[16px] sm:text-xs font-mono outline-none focus:border-brand focus:bg-white"
                 />
                 <button
-                  type="button"
+                  type="submit"
                   disabled={memberLoading}
-                  onClick={async () => {
-                    const res = await verifyMember();
-                    if (res && exclusivePromptDish) {
-                      addToCartDirect(exclusivePromptDish, res);
-                      setExclusivePromptDish(null);
-                    }
-                  }}
-                  className="w-full rounded-xl bg-warm-900 px-3.5 py-2.5 text-xs font-semibold text-white hover:bg-brand transition shrink-0 disabled:opacity-50"
+                  className="w-full rounded-xl bg-brand px-3.5 py-2.5 text-xs font-semibold text-white hover:bg-brand-dark transition shrink-0 disabled:opacity-50"
                 >
                   {memberLoading ? "Verifying..." : "Verify & Unlock"}
                 </button>
               </div>
               {memberError && (
-                <p className="text-[11px] text-rose-600 font-medium">{memberError}</p>
+                <p className="text-[11px] text-rose-600 font-medium">
+                  {memberError}
+                </p>
               )}
-            </div>
+            </form>
 
             <div className="pt-2 border-t border-warm-100 flex flex-col gap-2">
               <button
@@ -2612,10 +3216,16 @@ export default function Customer() {
 
       {/* Customer Membership & Rewards Modal */}
       {showMemberModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-warm-950/60 p-0 sm:p-4 backdrop-blur-xs">
-          <div className="w-full max-w-lg max-h-[90vh] flex flex-col rounded-t-3xl sm:rounded-3xl bg-white shadow-2xl animate-in fade-in duration-200 overflow-hidden">
+        <div
+          onClick={() => setShowMemberModal(false)}
+          className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center bg-white sm:bg-warm-950/75 p-0 sm:p-4 sm:backdrop-blur-xs"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-lg h-full sm:h-auto sm:max-h-[88dvh] flex flex-col rounded-none sm:rounded-3xl bg-white sm:shadow-2xl overflow-hidden"
+          >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-warm-100 px-5 py-4 bg-gradient-to-r from-warm-50 to-amber-50/50">
+            <div className="shrink-0 flex items-center justify-between border-b border-warm-100 px-5 py-4 bg-warm-50">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-amber-100 text-amber-900 shadow-2xs font-bold">
                   ⭐
@@ -2639,7 +3249,11 @@ export default function Customer() {
             </div>
 
             {/* Modal Body */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            <div
+              ref={memberModalBodyRef}
+              style={{ WebkitOverflowScrolling: "touch" }}
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y p-5 pb-8 space-y-4"
+            >
               {!memberData ? (
                 /* Lookup or Register View */
                 <div className="space-y-4">
@@ -2653,7 +3267,9 @@ export default function Customer() {
                           Check Your Membership Status
                         </h4>
                         <p className="mt-1 text-xs text-warm-500 max-w-xs mx-auto">
-                          Enter your membership number or phone, and your password to view your rewards balance, tier perks, and points.
+                          Enter your username, phone number, or membership #,
+                          and your password or PIN to view your rewards balance,
+                          tier perks, and points.
                         </p>
                       </div>
 
@@ -2672,18 +3288,20 @@ export default function Customer() {
                       >
                         <div className="space-y-1">
                           <label className="block text-xs font-semibold text-warm-700 uppercase tracking-wide">
-                            Membership Number or Phone
+                            Username or Phone Number
                           </label>
                           <input
                             type="text"
                             required
-                            placeholder="e.g. #0001 or 08112233445"
+                            placeholder="e.g. Alice Johnson, 08112233445, or #0001"
                             value={memberNumberInput}
                             onChange={(e) => {
                               setMemberNumberInput(e.target.value);
                               setMemberError("");
                             }}
-                            className={inp + " w-full font-mono text-sm"}
+                            className={
+                              inp + " w-full font-mono text-[16px] sm:text-sm"
+                            }
                           />
                         </div>
 
@@ -2700,24 +3318,31 @@ export default function Customer() {
                               setMemberPasswordInput(e.target.value);
                               setMemberError("");
                             }}
-                            className={inp + " w-full font-mono text-sm"}
+                            className={
+                              inp + " w-full font-mono text-[16px] sm:text-sm"
+                            }
                           />
                           <p className="text-[10px] text-warm-400 font-mono">
-                            ★ Default PIN for sample members (Samantha, Alice, David): 1234
+                            ★ Default PIN for sample members (Samantha, Alice,
+                            David): 1234
                           </p>
                         </div>
 
                         <button
                           type="submit"
                           disabled={memberLoading}
-                          className="w-full rounded-xl bg-warm-900 py-3 font-display text-xs sm:text-sm font-bold text-white shadow-xs hover:bg-brand transition disabled:opacity-50"
+                          className="w-full rounded-xl bg-brand py-3 font-display text-xs sm:text-sm font-bold text-white shadow-xs hover:bg-brand-dark transition disabled:opacity-50"
                         >
-                          {memberLoading ? "Checking..." : "Verify & Check Status"}
+                          {memberLoading
+                            ? "Checking..."
+                            : "Verify & Check Status"}
                         </button>
                       </form>
 
                       <div className="pt-3 border-t border-warm-100 text-center">
-                        <p className="text-xs text-warm-500">Not a member yet?</p>
+                        <p className="text-xs text-warm-500">
+                          Not a member yet?
+                        </p>
                         <button
                           type="button"
                           onClick={() => {
@@ -2732,7 +3357,10 @@ export default function Customer() {
                     </div>
                   ) : (
                     /* In-Modal Registration Form */
-                    <form onSubmit={handleCustomerRegister} className="space-y-3.5">
+                    <form
+                      onSubmit={handleCustomerRegister}
+                      className="space-y-3.5"
+                    >
                       <div className="text-center pb-1">
                         <h4 className="font-display text-base font-bold text-warm-900">
                           Join MOLS MAISON Membership
@@ -2750,10 +3378,13 @@ export default function Customer() {
                           type="text"
                           required
                           placeholder="Your name"
-                          className={inp + " w-full text-sm"}
+                          className={inp + " w-full text-[16px] sm:text-sm"}
                           value={customerRegisterForm.name}
                           onChange={(e) =>
-                            setCustomerRegisterForm({ ...customerRegisterForm, name: e.target.value })
+                            setCustomerRegisterForm({
+                              ...customerRegisterForm,
+                              name: e.target.value,
+                            })
                           }
                         />
                       </div>
@@ -2766,10 +3397,15 @@ export default function Customer() {
                           type="tel"
                           required
                           placeholder="e.g. 08123456789"
-                          className={inp + " w-full font-mono text-sm"}
+                          className={
+                            inp + " w-full font-mono text-[16px] sm:text-sm"
+                          }
                           value={customerRegisterForm.phone}
                           onChange={(e) =>
-                            setCustomerRegisterForm({ ...customerRegisterForm, phone: e.target.value })
+                            setCustomerRegisterForm({
+                              ...customerRegisterForm,
+                              phone: e.target.value,
+                            })
                           }
                         />
                       </div>
@@ -2782,10 +3418,15 @@ export default function Customer() {
                           type="password"
                           required
                           placeholder="Choose at least 4 digits or characters"
-                          className={inp + " w-full font-mono text-sm"}
+                          className={
+                            inp + " w-full font-mono text-[16px] sm:text-sm"
+                          }
                           value={customerRegisterForm.password}
                           onChange={(e) =>
-                            setCustomerRegisterForm({ ...customerRegisterForm, password: e.target.value })
+                            setCustomerRegisterForm({
+                              ...customerRegisterForm,
+                              password: e.target.value,
+                            })
                           }
                         />
                       </div>
@@ -2797,10 +3438,13 @@ export default function Customer() {
                         <input
                           type="email"
                           placeholder="your.email@example.com"
-                          className={inp + " w-full text-sm"}
+                          className={inp + " w-full text-[16px] sm:text-sm"}
                           value={customerRegisterForm.email}
                           onChange={(e) =>
-                            setCustomerRegisterForm({ ...customerRegisterForm, email: e.target.value })
+                            setCustomerRegisterForm({
+                              ...customerRegisterForm,
+                              email: e.target.value,
+                            })
                           }
                         />
                       </div>
@@ -2818,7 +3462,9 @@ export default function Customer() {
                           disabled={customerRegisterLoading}
                           className="flex-1 rounded-xl bg-brand py-2.5 font-display text-xs font-bold text-white shadow-xs hover:bg-brand-dark transition"
                         >
-                          {customerRegisterLoading ? "Creating..." : "Join & Get 50 pts"}
+                          {customerRegisterLoading
+                            ? "Creating..."
+                            : "Join & Get 50 pts"}
                         </button>
                       </div>
                     </form>
@@ -2846,8 +3492,8 @@ export default function Customer() {
                       onClick={() => setActiveMemberTab("prive")}
                       className={`flex-1 py-2 px-2 text-center rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
                         activeMemberTab === "prive"
-                          ? "bg-purple-900 text-white shadow-2xs"
-                          : "text-purple-950 hover:text-purple-800"
+                          ? "bg-[#242024] text-[#F5EBDD] shadow-2xs"
+                          : "text-stone-700 hover:text-stone-950"
                       }`}
                     >
                       <span>👑</span>
@@ -2883,33 +3529,41 @@ export default function Customer() {
                   {activeMemberTab === "profile" && (
                     <div className="space-y-4 animate-in fade-in duration-200">
                       {/* Digital VIP Luxury Membership Card */}
+                      {(() => {
+                        const cardTier = (
+                          memberData.tier_code ||
+                          memberData.loyalty_tier ||
+                          ""
+                        ).toLowerCase();
+                        const isVipCard = cardTier === "vip";
+                        return (
                       <div
                         className={`relative isolate overflow-hidden rounded-2xl p-6 sm:p-7 text-white shadow-xl border ${
-                          (memberData.tier_code || memberData.loyalty_tier || "").toLowerCase() === "vip"
-                            ? "bg-[#332442] border-[#A18A65]"
-                            : (memberData.tier_code || memberData.loyalty_tier || "").toLowerCase() === "gold"
-                              ? "bg-[#80602F] border-[#D4B46E]"
-                              : (memberData.tier_code || memberData.loyalty_tier || "").toLowerCase() === "silver"
-                                ? "bg-[#596168] border-[#C9CBCD]"
-                                : "bg-[#684B3A] border-[#B88E68]"
+                          isVipCard
+                            ? "bg-[#141414] border-[#D4AF37]"
+                            : cardTier === "gold"
+                              ? "bg-[#C8963E] border-[#F7DF9C]"
+                              : cardTier === "silver"
+                                ? "bg-[#8E9BA8] border-[#E5ECF2]"
+                                : "bg-[#C47E52] border-[#F0C89E]"
                         }`}
                       >
                         {/* Decorative borders */}
-                        <div className="pointer-events-none absolute inset-[7px] rounded-xl border border-[#E5D4B4]/30" />
-                        <div className="pointer-events-none absolute inset-[12px] rounded-lg border border-[#E5D4B4]/10" />
+                        <div className={`pointer-events-none absolute inset-[7px] rounded-xl border ${isVipCard ? "border-[#D4AF37]/45" : "border-white/35"}`} />
+                        <div className={`pointer-events-none absolute inset-[12px] rounded-lg border ${isVipCard ? "border-[#D4AF37]/20" : "border-white/15"}`} />
 
                         {/* Background monogram */}
                         <div className="pointer-events-none absolute -right-5 -bottom-14 select-none">
-                          <span className="font-serif text-[210px] leading-none text-[#E5D4B4]/[0.07]">
+                          <span className={`font-serif text-[210px] leading-none ${isVipCard ? "text-[#D4AF37]/[0.10]" : "text-white/[0.09]"}`}>
                             M
                           </span>
                         </div>
 
                         {/* Decorative accents */}
-                        <div className="pointer-events-none absolute top-4 left-4 font-serif text-lg text-[#E5D4B4]/70">
+                        <div className={`pointer-events-none absolute top-4 left-4 font-serif text-lg ${isVipCard ? "text-[#F3D478]" : "text-white/75"}`}>
                           ✧
                         </div>
-                        <div className="pointer-events-none absolute top-4 right-4 font-serif text-lg text-[#E5D4B4]/70">
+                        <div className={`pointer-events-none absolute top-4 right-4 font-serif text-lg ${isVipCard ? "text-[#F3D478]" : "text-white/75"}`}>
                           ✧
                         </div>
 
@@ -2924,10 +3578,10 @@ export default function Customer() {
                               />
 
                               <div>
-                                <h3 className="font-logo text-lg tracking-[0.16em] text-white">
+                                <h3 className={`font-logo text-lg tracking-[0.16em] ${isVipCard ? "text-[#F6DF93]" : "text-white"}`}>
                                   MOLS MAISON
                                 </h3>
-                                <p className="mt-0.5 text-[9px] uppercase tracking-[0.25em] text-[#E5D4B4]/75">
+                                <p className={`mt-0.5 text-[9px] uppercase tracking-[0.25em] ${isVipCard ? "text-[#E8CA7A]/85" : "text-white/85"}`}>
                                   Private Membership
                                 </p>
                               </div>
@@ -2935,12 +3589,16 @@ export default function Customer() {
 
                             <div className="flex items-center gap-1.5">
                               {memberData.membership?.is_prive && (
-                                <span className="rounded-sm border border-purple-400/50 bg-purple-900/60 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-purple-200 backdrop-blur-xs">
+                                <span className="rounded-sm border border-[#E5D4B4]/60 bg-[#242024]/85 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[#F5EBDD] backdrop-blur-xs">
                                   👑 Privé
                                 </span>
                               )}
-                              <span className="rounded-sm border border-[#E5D4B4]/50 bg-black/20 px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[#F0DDBB] backdrop-blur-xs">
-                                {(memberData.tier_code || memberData.loyalty_tier || "").toLowerCase() === "vip"
+                              <span className={`rounded-sm border px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] backdrop-blur-xs ${
+                                isVipCard
+                                  ? "border-[#D4AF37]/60 bg-[#D4AF37]/15 text-[#F6DF93]"
+                                  : "border-white/50 bg-black/20 text-white"
+                              }`}>
+                                {isVipCard
                                   ? "VIP Elite"
                                   : `${memberData.tier || memberData.loyalty_tier || "Bronze"} Member`}
                               </span>
@@ -2950,103 +3608,120 @@ export default function Customer() {
                           {/* Member information */}
                           <div className="grid grid-cols-2 gap-4 items-end">
                             <div className="min-w-0">
-                              <p className="mb-1 text-[9px] uppercase tracking-[0.23em] text-[#E5D4B4]/70 font-mono">
+                              <p className={`mb-1 text-[9px] uppercase tracking-[0.23em] font-mono ${isVipCard ? "text-[#E8CA7A]/80" : "text-white/80"}`}>
                                 Cardholder
                               </p>
 
-                              <h2 className="break-words font-serif text-2xl sm:text-3xl font-medium tracking-wide text-[#F5EBDD]">
+                              <h2 className={`break-words font-serif text-2xl sm:text-3xl font-medium tracking-wide ${isVipCard ? "text-[#FFF6DF]" : "text-white"}`}>
                                 {memberData.name || memberData.full_name}
                               </h2>
 
-                              <p className="mt-1.5 text-[12px] font-mono tracking-wider text-white/70">
+                              <p className="mt-1.5 text-[12px] font-mono tracking-wider text-white/90">
                                 {memberData.phone}
                               </p>
 
                               {memberData.email && (
-                                <p className="mt-0.5 break-all text-[11px] text-white/60">
+                                <p className="mt-0.5 break-all text-[11px] text-white/80">
                                   {memberData.email}
                                 </p>
                               )}
                             </div>
 
                             <div className="text-right">
-                              <p className="mb-1 text-[9px] uppercase tracking-[0.23em] text-[#E5D4B4]/70 font-mono">
+                              <p className={`mb-1 text-[9px] uppercase tracking-[0.23em] font-mono ${isVipCard ? "text-[#E8CA7A]/80" : "text-white/80"}`}>
                                 Available Points
                               </p>
 
-                              <p className="font-serif text-3xl sm:text-4xl font-medium tabular-nums text-[#F0D9A5]">
-                                {(memberData.points || memberData.points_balance || 0).toLocaleString()}
+                              <p className={`font-serif text-3xl sm:text-4xl font-medium tabular-nums ${isVipCard ? "text-[#F6DF93]" : "text-[#FFF6DF]"}`}>
+                                {(
+                                  memberData.points ||
+                                  memberData.points_balance ||
+                                  0
+                                ).toLocaleString()}
                               </p>
 
-                              <p className="mt-0.5 text-[9px] uppercase tracking-[0.16em] text-white/65 font-mono">
+                              <p className={`mt-0.5 text-[9px] uppercase tracking-[0.16em] font-mono ${isVipCard ? "text-[#E8CA7A]/85" : "text-white/85"}`}>
                                 Reward Points
                               </p>
 
-                              <p className="mt-1 text-[10px] font-mono text-[#E5D4B4]/80">
-                                ≈ {money((memberData.points || memberData.points_balance || 0) / 100)} (100 pts = $1)
+                              <p className={`mt-1 text-[10px] font-mono ${isVipCard ? "text-[#F3D478]" : "text-white/90"}`}>
+                                ≈{" "}
+                                {money(
+                                  (memberData.points ||
+                                    memberData.points_balance ||
+                                    0) / 100,
+                                )}{" "}
+                                (100 pts = $1)
                               </p>
                             </div>
                           </div>
 
                           {/* Decorative divider */}
                           <div className="flex items-center gap-3">
-                            <div className="h-px flex-1 bg-[#E5D4B4]/30" />
-                            <span className="font-serif text-sm text-[#E5D4B4]/80">
+                            <div className={`h-px flex-1 ${isVipCard ? "bg-[#D4AF37]/40" : "bg-white/35"}`} />
+                            <span className={`font-serif text-sm ${isVipCard ? "text-[#F3D478]" : "text-white/90"}`}>
                               ✧
                             </span>
-                            <div className="h-px flex-1 bg-[#E5D4B4]/30" />
+                            <div className={`h-px flex-1 ${isVipCard ? "bg-[#D4AF37]/40" : "bg-white/35"}`} />
                           </div>
 
                           {/* Membership privileges */}
                           <div className="grid grid-cols-2 gap-4">
                             <div>
-                              <p className="text-[9px] uppercase tracking-[0.2em] text-[#E5D4B4]/70 font-mono">
+                              <p className={`text-[9px] uppercase tracking-[0.2em] font-mono ${isVipCard ? "text-[#E8CA7A]/80" : "text-white/80"}`}>
                                 Member Privilege
                               </p>
-                              <p className="mt-1 font-serif text-sm sm:text-base text-[#F5EBDD]">
+                              <p className={`mt-1 font-serif text-sm sm:text-base ${isVipCard ? "text-[#FFF6DF]" : "text-white"}`}>
                                 {memberData.discount_percent > 0
                                   ? `${memberData.discount_percent}% Dining Privilege`
-                                  : ((memberData.tier_code || memberData.loyalty_tier || "").toLowerCase() === "silver"
+                                  : cardTier === "silver"
                                     ? "3% Dining Privilege"
-                                    : (memberData.tier_code || memberData.loyalty_tier || "").toLowerCase() === "gold"
+                                    : cardTier === "gold"
                                       ? "5% Dining Privilege"
-                                      : (memberData.tier_code || memberData.loyalty_tier || "").toLowerCase() === "vip"
+                                      : isVipCard
                                         ? "10% Dining Privilege"
-                                        : "1x Points per $1 spent")}
+                                        : "1x Points per $1 spent"}
                               </p>
                             </div>
 
                             <div className="text-right">
-                              <p className="text-[9px] uppercase tracking-[0.2em] text-[#E5D4B4]/70 font-mono">
+                              <p className={`text-[9px] uppercase tracking-[0.2em] font-mono ${isVipCard ? "text-[#E8CA7A]/80" : "text-white/80"}`}>
                                 Multiplier
                               </p>
-                              <p className="mt-1 font-serif text-sm sm:text-base text-[#F5EBDD]">
-                                {memberData.points_multiplier || 1}x Points Multiplier
+                              <p className={`mt-1 font-serif text-sm sm:text-base ${isVipCard ? "text-[#FFF6DF]" : "text-white"}`}>
+                                {memberData.points_multiplier || 1}x Points
+                                Multiplier
                               </p>
                             </div>
                           </div>
 
                           {/* Card footer */}
-                          <div className="flex items-center justify-between border-t border-[#E5D4B4]/20 pt-2.5">
-                            <p className="text-[9px] uppercase tracking-[0.2em] text-white/50 font-mono">
+                          <div className={`flex items-center justify-between border-t pt-2.5 ${isVipCard ? "border-[#D4AF37]/25" : "border-white/25"}`}>
+                            <p className={`text-[9px] uppercase tracking-[0.2em] font-mono ${isVipCard ? "text-[#E8CA7A]/70" : "text-white/75"}`}>
                               MOLS MAISON · Members Club
                             </p>
 
-                            <p className="font-mono text-[10px] tracking-widest text-[#E5D4B4]/80">
+                            <p className={`font-mono text-[10px] tracking-widest ${isVipCard ? "text-[#F3D478]" : "text-white/90"}`}>
                               MM · {String(memberData.id).padStart(5, "0")}
                             </p>
                           </div>
                         </div>
                       </div>
+                        );
+                      })()}
 
                       {/* Birthday Month Alert */}
                       {memberData.birthday_info?.is_birthday_month && (
-                        <div className="rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 p-3 shadow-xs flex items-center gap-3">
+                        <div className="rounded-2xl bg-amber-50 border border-amber-300 p-3 shadow-xs flex items-center gap-3">
                           <span className="text-2xl">🎂</span>
                           <div>
-                            <p className="font-bold text-xs text-amber-950">Happy Birthday Month!</p>
+                            <p className="font-bold text-xs text-amber-950">
+                              Happy Birthday Month!
+                            </p>
                             <p className="text-[11px] text-amber-800">
-                              {memberData.birthday_info?.available_reward?.description || "You have a complimentary birthday dining dessert gift available!"}
+                              {memberData.birthday_info?.available_reward
+                                ?.description ||
+                                "You have a complimentary birthday dining dessert gift available!"}
                             </p>
                           </div>
                         </div>
@@ -3060,35 +3735,52 @@ export default function Customer() {
                               Lifetime Tier Progress
                             </span>
                             <span className="font-mono text-xs font-semibold text-brand">
-                              {memberData.tier_info.progress_percent}% to {memberData.tier_info.next_tier || "Max VIP"}
+                              {memberData.tier_info.progress_percent}% to{" "}
+                              {memberData.tier_info.next_tier || "Max VIP"}
                             </span>
                           </div>
 
                           {/* Progress Track */}
                           <div className="h-3 w-full bg-warm-100 rounded-full overflow-hidden p-0.5 border border-warm-200">
                             <div
-                              className="h-full bg-gradient-to-r from-amber-500 to-brand rounded-full transition-all duration-500"
-                              style={{ width: `${Math.max(5, memberData.tier_info.progress_percent)}%` }}
+                              className="h-full bg-brand rounded-full transition-all duration-500"
+                              style={{
+                                width: `${Math.max(5, memberData.tier_info.progress_percent)}%`,
+                              }}
                             />
                           </div>
 
                           <div className="flex justify-between items-center text-xs font-mono">
-                            <span className="font-bold text-warm-800">{memberData.tier_info.current_tier}</span>
+                            <span className="font-bold text-warm-800">
+                              {memberData.tier_info.current_tier}
+                            </span>
                             {memberData.tier_info.next_tier ? (
-                              <span className="font-bold text-warm-500">Next: {memberData.tier_info.next_tier}</span>
+                              <span className="font-bold text-warm-500">
+                                Next: {memberData.tier_info.next_tier}
+                              </span>
                             ) : (
-                              <span className="font-bold text-amber-600">✦ Maximum Tier Unlocked!</span>
+                              <span className="font-bold text-amber-600">
+                                ✦ Maximum Tier Unlocked!
+                              </span>
                             )}
                           </div>
 
                           {memberData.tier_info.next_tier ? (
                             <div className="rounded-2xl bg-amber-50 border border-amber-200 p-2.5 text-xs text-amber-950 font-medium">
-                              Spend <span className="font-bold font-mono">{money(memberData.tier_info.needed)}</span> more to unlock{" "}
-                              <span className="font-bold">{memberData.tier_info.next_tier}</span> ({memberData.tier_info.next_perk})!
+                              Spend{" "}
+                              <span className="font-bold font-mono">
+                                {money(memberData.tier_info.needed)}
+                              </span>{" "}
+                              more to unlock{" "}
+                              <span className="font-bold">
+                                {memberData.tier_info.next_tier}
+                              </span>{" "}
+                              ({memberData.tier_info.next_perk})!
                             </div>
                           ) : (
                             <div className="rounded-2xl bg-purple-50 border border-purple-200 p-2.5 text-xs text-purple-950 font-medium">
-                              You enjoy maximum VIP status with 10% discount and 2x points on every dollar!
+                              You enjoy maximum VIP status with 10% discount and
+                              2x points on every dollar!
                             </div>
                           )}
                         </div>
@@ -3097,34 +3789,62 @@ export default function Customer() {
                       {/* Lifetime Spending Stats */}
                       <div className="grid grid-cols-2 gap-3 font-mono text-xs">
                         <div className="rounded-2xl border border-warm-200 bg-warm-50/60 p-3">
-                          <span className="text-warm-500 text-[10px] uppercase font-semibold">Lifetime Spend</span>
-                          <p className="text-base font-bold text-warm-900 mt-0.5">{money(memberData.total_spent)}</p>
+                          <span className="text-warm-500 text-[10px] uppercase font-semibold">
+                            Lifetime Spend
+                          </span>
+                          <p className="text-base font-bold text-warm-900 mt-0.5">
+                            {money(memberData.total_spent)}
+                          </p>
                         </div>
                         <div className="rounded-2xl border border-warm-200 bg-warm-50/60 p-3">
-                          <span className="text-warm-500 text-[10px] uppercase font-semibold">Total Points Earned</span>
-                          <p className="text-base font-bold text-warm-900 mt-0.5">{memberData.total_points_earned || memberData.points} pts</p>
+                          <span className="text-warm-500 text-[10px] uppercase font-semibold">
+                            Total Points Earned
+                          </span>
+                          <p className="text-base font-bold text-warm-900 mt-0.5">
+                            {memberData.total_points_earned ||
+                              memberData.points}{" "}
+                            pts
+                          </p>
                         </div>
                       </div>
 
                       {/* Tier Perks Breakdown Table */}
                       <div className="rounded-3xl border border-warm-200 bg-white p-4 shadow-card space-y-2 text-xs">
-                        <h5 className="font-display font-bold text-warm-900 text-xs sm:text-sm">Spending Tier Rules &amp; Multipliers</h5>
+                        <h5 className="font-display font-bold text-warm-900 text-xs sm:text-sm">
+                          Spending Tier Rules &amp; Multipliers
+                        </h5>
                         <div className="divide-y divide-warm-100 font-mono text-[11px]">
                           <div className="py-1.5 flex justify-between">
-                            <span className="text-warm-600">🥉 Bronze ($0–$199.99)</span>
-                            <span className="text-warm-900 font-semibold">0% Off · 1x Multiplier</span>
+                            <span className="text-warm-600">
+                              🥉 Bronze ($0–$199.99)
+                            </span>
+                            <span className="text-warm-900 font-semibold">
+                              0% Off · 1x Multiplier
+                            </span>
                           </div>
                           <div className="py-1.5 flex justify-between">
-                            <span className="text-slate-700 font-semibold">🥈 Silver ($200–$399.99)</span>
-                            <span className="text-warm-900 font-semibold">3% Off · 1.25x Multiplier</span>
+                            <span className="text-slate-700 font-semibold">
+                              🥈 Silver ($200–$399.99)
+                            </span>
+                            <span className="text-warm-900 font-semibold">
+                              3% Off · 1.25x Multiplier
+                            </span>
                           </div>
                           <div className="py-1.5 flex justify-between">
-                            <span className="text-amber-800 font-semibold">⭐ Gold ($400–$599.99)</span>
-                            <span className="text-warm-900 font-semibold">5% Off · 1.5x Multiplier</span>
+                            <span className="text-amber-800 font-semibold">
+                              ⭐ Gold ($400–$599.99)
+                            </span>
+                            <span className="text-warm-900 font-semibold">
+                              5% Off · 1.5x Multiplier
+                            </span>
                           </div>
                           <div className="py-1.5 flex justify-between">
-                            <span className="text-purple-800 font-bold">💎 VIP ($600+)</span>
-                            <span className="text-warm-900 font-semibold">10% Off · 2.0x Multiplier</span>
+                            <span className="text-purple-800 font-bold">
+                              💎 VIP ($600+)
+                            </span>
+                            <span className="text-warm-900 font-semibold">
+                              10% Off · 2.0x Multiplier
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -3134,37 +3854,56 @@ export default function Customer() {
                   {/* TAB 2: MAISON PRIVÉ ANNUAL MEMBERSHIP */}
                   {activeMemberTab === "prive" && (
                     <div className="space-y-4 animate-in fade-in duration-200">
-                      <div className="rounded-3xl bg-gradient-to-br from-purple-950 via-slate-900 to-purple-900 text-white p-5 shadow-xl border border-purple-400/40 space-y-3">
+                      <div className="rounded-3xl bg-[#242024] text-[#F5EBDD] p-5 shadow-xl border border-[#C8B084]/45 space-y-3">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <span className="text-2xl">👑</span>
                             <div>
-                              <h4 className="font-display text-lg font-bold tracking-wide">Maison Privé</h4>
-                              <p className="text-[11px] font-mono text-purple-200">Annual Luxury Dining Subscription · $49.99/year</p>
+                              <h4 className="font-display text-lg font-bold tracking-wide text-white">
+                                Maison Privé
+                              </h4>
+                              <p className="text-[11px] font-mono text-[#DFC9A6]">
+                                Annual Luxury Dining Subscription · $49.99/year
+                              </p>
                             </div>
                           </div>
-                          <span className={`rounded-full px-3 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider ${
-                            memberData.membership?.is_prive
-                              ? "bg-emerald-500/30 text-emerald-300 border border-emerald-400/50"
-                              : "bg-white/20 text-purple-200"
-                          }`}>
-                            {memberData.membership?.is_prive ? "Active Member" : "Standard Account"}
+                          <span
+                            className={`rounded-full px-3 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider ${
+                              memberData.membership?.is_prive
+                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-400/40"
+                                : "bg-white/10 text-[#E8D5B5] border border-[#C8B084]/30"
+                            }`}
+                          >
+                            {memberData.membership?.is_prive
+                              ? "Active Member"
+                              : "Standard Account"}
                           </span>
                         </div>
 
-                        <p className="text-xs text-purple-100/90 leading-relaxed">
-                          Maison Privé is an optional annual subscription providing bespoke concierge dining privileges. It operates independently of and compliments your lifetime spending tier.
+                        <p className="text-xs text-stone-300 leading-relaxed">
+                          Maison Privé is an optional annual subscription
+                          providing bespoke concierge dining privileges. It
+                          operates independently of and compliments your
+                          lifetime spending tier.
                         </p>
 
                         {memberData.membership?.is_prive ? (
-                          <div className="rounded-2xl bg-white/10 p-3 border border-white/15 font-mono text-xs flex justify-between items-center">
+                          <div className="rounded-2xl bg-white/10 p-3 border border-[#C8B084]/30 font-mono text-xs flex justify-between items-center">
                             <div>
-                              <span className="text-[10px] text-purple-300 uppercase block">Membership Expiry</span>
-                              <span className="font-bold text-purple-100">{memberData.membership.end_date}</span>
+                              <span className="text-[10px] text-[#DFC9A6] uppercase block">
+                                Membership Expiry
+                              </span>
+                              <span className="font-bold text-white">
+                                {memberData.membership.end_date}
+                              </span>
                             </div>
                             <div className="text-right">
-                              <span className="text-[10px] text-purple-300 uppercase block">Remaining</span>
-                              <span className="font-bold text-emerald-300">{memberData.membership.days_remaining} days left</span>
+                              <span className="text-[10px] text-[#DFC9A6] uppercase block">
+                                Remaining
+                              </span>
+                              <span className="font-bold text-emerald-300">
+                                {memberData.membership.days_remaining} days left
+                              </span>
                             </div>
                           </div>
                         ) : (
@@ -3172,16 +3911,20 @@ export default function Customer() {
                             type="button"
                             disabled={loyaltyActionLoading}
                             onClick={handleSubscribeMaisonPrive}
-                            className="w-full rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 text-purple-950 font-display font-bold py-3 text-xs sm:text-sm shadow-md hover:from-amber-300 hover:to-amber-400 active:scale-95 transition"
+                            className="w-full rounded-2xl bg-brand text-white font-display font-bold py-3 text-xs sm:text-sm shadow-md hover:bg-brand-dark active:scale-95 transition"
                           >
-                            {loyaltyActionLoading ? "Processing..." : "Subscribe to Maison Privé ($49.99 / 12 Months)"}
+                            {loyaltyActionLoading
+                              ? "Processing..."
+                              : "Subscribe to Maison Privé ($49.99 / 12 Months)"}
                           </button>
                         )}
                       </div>
 
                       {/* Benefits Checklist */}
                       <div className="rounded-3xl border border-warm-200 bg-white p-5 shadow-card space-y-3">
-                        <h5 className="font-display font-bold text-warm-900 text-sm">Exclusive Maison Privé Privileges</h5>
+                        <h5 className="font-display font-bold text-warm-900 text-sm">
+                          Exclusive Maison Privé Privileges
+                        </h5>
                         <div className="space-y-2 text-xs text-warm-700">
                           {[
                             "Priority table reservations on peak dining nights",
@@ -3192,7 +3935,9 @@ export default function Customer() {
                             "Special member-only promotional events",
                           ].map((b, i) => (
                             <div key={i} className="flex items-center gap-2.5">
-                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold">✓</span>
+                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold">
+                                ✓
+                              </span>
                               <span>{b}</span>
                             </div>
                           ))}
@@ -3206,23 +3951,73 @@ export default function Customer() {
                     <div className="space-y-4 animate-in fade-in duration-200">
                       <div className="flex items-center justify-between rounded-2xl bg-amber-50 border border-amber-200 p-3 font-mono text-xs text-amber-950">
                         <span>Your Available Balance:</span>
-                        <span className="font-bold text-base text-amber-900">{memberData.points} points ({money(memberData.points / 100)})</span>
+                        <span className="font-bold text-base text-amber-900">
+                          {memberData.points} points (
+                          {money(memberData.points / 100)})
+                        </span>
                       </div>
 
                       {/* Catalog Items */}
                       <div className="space-y-2.5">
-                        <h5 className="font-display font-bold text-warm-900 text-xs sm:text-sm">Available Rewards for Redemption</h5>
+                        <h5 className="font-display font-bold text-warm-900 text-xs sm:text-sm">
+                          Available Rewards for Redemption
+                        </h5>
                         <div className="space-y-2">
-                          {(customerRewardsData?.catalog || [
-                            { id: 1, name: "$2 Dining Discount", reward_value: 2, points_required: 200, reward_type: "discount" },
-                            { id: 2, name: "$5 Dining Discount", reward_value: 5, points_required: 500, reward_type: "discount" },
-                            { id: 3, name: "$10 Dining Discount", reward_value: 10, points_required: 1000, reward_type: "discount" },
-                            { id: 4, name: "$20 Dining Discount", reward_value: 20, points_required: 2000, reward_type: "discount" },
-                            { id: 5, name: "Complimentary Dessert", reward_value: 5, points_required: 500, reward_type: "free_item" },
-                            { id: 6, name: "Signature Drink", reward_value: 7, points_required: 700, reward_type: "free_item" },
-                            { id: 7, name: "Complimentary Appetizer", reward_value: 10, points_required: 1000, reward_type: "free_item" },
-                          ]).map((rw) => {
-                            const canAfford = memberData.points >= rw.points_required;
+                          {(
+                            customerRewardsData?.catalog || [
+                              {
+                                id: 1,
+                                name: "$2 Dining Discount",
+                                reward_value: 2,
+                                points_required: 200,
+                                reward_type: "discount",
+                              },
+                              {
+                                id: 2,
+                                name: "$5 Dining Discount",
+                                reward_value: 5,
+                                points_required: 500,
+                                reward_type: "discount",
+                              },
+                              {
+                                id: 3,
+                                name: "$10 Dining Discount",
+                                reward_value: 10,
+                                points_required: 1000,
+                                reward_type: "discount",
+                              },
+                              {
+                                id: 4,
+                                name: "$20 Dining Discount",
+                                reward_value: 20,
+                                points_required: 2000,
+                                reward_type: "discount",
+                              },
+                              {
+                                id: 5,
+                                name: "Complimentary Dessert",
+                                reward_value: 5,
+                                points_required: 500,
+                                reward_type: "free_item",
+                              },
+                              {
+                                id: 6,
+                                name: "Signature Drink",
+                                reward_value: 7,
+                                points_required: 700,
+                                reward_type: "free_item",
+                              },
+                              {
+                                id: 7,
+                                name: "Complimentary Appetizer",
+                                reward_value: 10,
+                                points_required: 1000,
+                                reward_type: "free_item",
+                              },
+                            ]
+                          ).map((rw) => {
+                            const canAfford =
+                              memberData.points >= rw.points_required;
                             return (
                               <div
                                 key={rw.id}
@@ -3230,11 +4025,18 @@ export default function Customer() {
                               >
                                 <div>
                                   <div className="flex items-center gap-1.5 font-bold text-xs text-warm-900">
-                                    <span>{rw.reward_type === "discount" ? "🏷️" : rw.reward_type === "free_item" ? "🍰" : "⭐"}</span>
+                                    <span>
+                                      {rw.reward_type === "discount"
+                                        ? "🏷️"
+                                        : rw.reward_type === "free_item"
+                                          ? "🍰"
+                                          : "⭐"}
+                                    </span>
                                     <span>{rw.name}</span>
                                   </div>
                                   <p className="font-mono text-[11px] text-warm-500 mt-0.5">
-                                    Requires {rw.points_required} pts · Value {money(rw.reward_value)}
+                                    Requires {rw.points_required} pts · Value{" "}
+                                    {money(rw.reward_value)}
                                   </p>
                                 </div>
                                 <button
@@ -3261,30 +4063,46 @@ export default function Customer() {
                   {activeMemberTab === "history" && (
                     <div className="space-y-3 animate-in fade-in duration-200">
                       <div className="flex justify-between items-center">
-                        <h5 className="font-display font-bold text-warm-900 text-xs sm:text-sm">Points Ledger &amp; History</h5>
-                        <span className="font-mono text-[11px] text-warm-500">Rolling 12-mo Activity</span>
+                        <h5 className="font-display font-bold text-warm-900 text-xs sm:text-sm">
+                          Points Ledger &amp; History
+                        </h5>
+                        <span className="font-mono text-[11px] text-warm-500">
+                          Rolling 12-mo Activity
+                        </span>
                       </div>
 
                       {customerTxData.length === 0 ? (
                         <div className="rounded-2xl border border-warm-200 bg-warm-50/60 p-6 text-center text-xs text-warm-500 font-mono">
-                          No transactions recorded yet. Points earned on paid dining will appear here.
+                          No transactions recorded yet. Points earned on paid
+                          dining will appear here.
                         </div>
                       ) : (
-                        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                        <div className="space-y-2">
                           {customerTxData.map((tx) => (
                             <div
                               key={tx.id}
                               className="rounded-2xl border border-warm-200/90 bg-white p-3 text-xs shadow-xs flex items-center justify-between"
                             >
                               <div>
-                                <p className="font-bold text-warm-900">{tx.description || tx.type}</p>
+                                <p className="font-bold text-warm-900">
+                                  {tx.description || tx.type}
+                                </p>
                                 <p className="font-mono text-[10px] text-warm-500">
-                                  {tx.created_at ? new Date(tx.created_at).toLocaleDateString() : ""} · Balance after: {tx.balance_after}p
+                                  {tx.created_at
+                                    ? new Date(
+                                        tx.created_at,
+                                      ).toLocaleDateString()
+                                    : ""}{" "}
+                                  · Balance after: {tx.balance_after}p
                                 </p>
                               </div>
-                              <span className={`font-mono font-bold text-xs px-2 py-0.5 rounded-lg ${
-                                tx.points > 0 ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
-                              }`}>
+                              <span
+                                className={`font-mono font-bold text-xs px-2 py-0.5 rounded-lg ${
+                                  tx.points > 0
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : "bg-rose-100 text-rose-800"
+                                }`}
+                              >
                                 {tx.points > 0 ? `+${tx.points}` : tx.points}p
                               </span>
                             </div>
@@ -3301,7 +4119,9 @@ export default function Customer() {
                       onClick={async () => {
                         if (token) {
                           try {
-                            await api(`/tables/${token}/unlink-member`, { method: "POST" });
+                            await api(`/tables/${token}/unlink-member`, {
+                              method: "POST",
+                            });
                           } catch {}
                         }
                         setMemberData(null);

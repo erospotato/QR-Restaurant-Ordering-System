@@ -4,10 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\Customer;
 use App\Models\CustomerReward;
+use App\Models\DiningTable;
 use App\Models\LoyaltyAuditLog;
 use App\Models\LoyaltyTransaction;
 use App\Models\Order;
 use App\Models\Reward;
+use App\Models\ServiceRequest;
+use App\Events\PosUpdated;
 use App\Services\LoyaltyService;
 use App\Services\PointsService;
 use Carbon\Carbon;
@@ -83,29 +86,24 @@ class CustomerController extends Controller
     }
 
     /**
-     * Customer verification (Dual field: Number/Phone + Password/PIN)
+     * Customer verification (Username / Phone / Card # + Password/PIN)
      */
     public function verify(Request $r)
     {
-        $identifier = trim($r->input('number', $r->input('phone', '')));
+        $identifier = trim($r->input('number', $r->input('phone', $r->input('username', $r->input('identifier', '')))));
         $password = trim($r->input('password', ''));
 
         if (!$identifier) {
-            abort(422, 'Membership number or phone number is required.');
+            abort(422, 'Username, phone number, or membership # is required.');
         }
         if (!$password) {
             abort(422, 'Membership password or PIN is required.');
         }
 
-        $cleanPhone = preg_replace('/[^0-9]/', '', $identifier);
-
-        $customer = Customer::where('phone', $identifier)
-            ->orWhere('phone', $cleanPhone)
-            ->orWhere('id', $identifier)
-            ->first();
+        $customer = Customer::findByLoginIdentifier($identifier, $password);
 
         if (!$customer) {
-            abort(404, 'No customer membership found matching that number or phone.');
+            abort(404, 'No customer membership found matching that username, phone number, or membership #.');
         }
 
         if (!$customer->verifyPassword($password)) {
@@ -249,7 +247,10 @@ class CustomerController extends Controller
     {
         $customer = Customer::findOrFail($id);
 
-        $d = $r->validate([
+        $staffUser = auth('sanctum')->user();
+        $isManagerialStaff = $staffUser && in_array($staffUser->role, ['admin', 'owner', 'manager'], true);
+
+        $rules = [
             'full_name' => 'sometimes|string|max:150',
             'name' => 'sometimes|string|max:150',
             'phone' => 'sometimes|string|max:30|unique:customers,phone,' . $customer->id,
@@ -259,35 +260,126 @@ class CustomerController extends Controller
             'gender' => 'nullable|string|max:20',
             'status' => 'sometimes|in:active,suspended',
             'notes' => 'nullable|string',
-        ]);
+        ];
+
+        if ($isManagerialStaff) {
+            $rules['loyalty_tier'] = 'sometimes|in:bronze,silver,gold,vip';
+            $rules['lifetime_spending'] = 'sometimes|numeric|min:0';
+            $rules['points_balance'] = 'sometimes|numeric|min:0';
+        }
+
+        $d = $r->validate($rules);
 
         if (isset($d['name']) && !isset($d['full_name'])) {
             $d['full_name'] = $d['name'];
             unset($d['name']);
         }
 
-        if (!empty($d['password'])) {
+        $passwordChanged = !empty($d['password']);
+        if ($passwordChanged) {
             $d['password'] = Hash::make(trim($d['password']));
         } else {
             unset($d['password']);
         }
 
-        $oldValues = $customer->only(array_keys($d));
+        $auditKeys = array_values(array_diff(array_keys($d), ['password']));
+        $oldValues = $customer->only($auditKeys);
+        $newValues = array_intersect_key($d, array_flip($auditKeys));
+        if ($passwordChanged) {
+            $newValues['password'] = '[UPDATED]';
+        }
+
         $customer->update($d);
 
+        if ($isManagerialStaff && !isset($d['loyalty_tier']) && isset($d['lifetime_spending'])) {
+            $customer->recalculateTier();
+            $customer->refresh();
+        }
+
         LoyaltyAuditLog::create([
-            'user_id' => auth('sanctum')->id(),
+            'user_id' => $staffUser?->id,
             'customer_id' => $customer->id,
             'action' => 'customer_updated',
             'old_values' => $oldValues,
-            'new_values' => $d,
-            'reason' => 'Customer profile updated by staff',
+            'new_values' => $newValues,
+            'reason' => $isManagerialStaff
+                ? ('Customer profile updated by ' . $staffUser->role)
+                : 'Customer profile updated',
         ]);
+
+        \App\Events\PosUpdated::safeDispatch('loyalty');
 
         return response()->json([
             'ok' => true,
-            'customer' => $customer->toApi(),
+            'customer' => $customer->fresh()->toApi(),
             'message' => 'Customer profile updated successfully.',
+        ]);
+    }
+
+    public function destroy(Request $r, $id)
+    {
+        $customer = Customer::findOrFail($id);
+        $staffUser = auth('sanctum')->user();
+
+        $snapshot = [
+            'id' => $customer->id,
+            'member_code' => $customer->member_code,
+            'full_name' => $customer->full_name,
+            'phone' => $customer->phone,
+            'loyalty_tier' => $customer->loyalty_tier,
+        ];
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($customer, $staffUser, $snapshot) {
+            if (\Illuminate\Support\Facades\Schema::hasTable('orders')) {
+                if (\Illuminate\Support\Facades\Schema::hasColumn('orders', 'customer_id')) {
+                    \Illuminate\Support\Facades\DB::table('orders')
+                        ->where('customer_id', $customer->id)
+                        ->update(['customer_id' => null]);
+                }
+                if (\Illuminate\Support\Facades\Schema::hasColumn('orders', 'member_id')) {
+                    \Illuminate\Support\Facades\DB::table('orders')
+                        ->where('member_id', $customer->id)
+                        ->update(['member_id' => null]);
+                }
+            }
+
+            foreach (['customer_memberships', 'loyalty_transactions', 'customer_rewards', 'birthday_rewards'] as $table) {
+                if (\Illuminate\Support\Facades\Schema::hasTable($table)) {
+                    \Illuminate\Support\Facades\DB::table($table)->where('customer_id', $customer->id)->delete();
+                }
+            }
+
+            if (\Illuminate\Support\Facades\Schema::hasTable('loyalty_audit_logs')) {
+                \Illuminate\Support\Facades\DB::table('loyalty_audit_logs')->where('customer_id', $customer->id)->delete();
+            }
+
+            if (\Illuminate\Support\Facades\Schema::hasTable('dining_tables') && \Illuminate\Support\Facades\Schema::hasColumn('dining_tables', 'number')) {
+                $tables = \Illuminate\Support\Facades\DB::table('dining_tables')->pluck('number');
+                foreach ($tables as $tNum) {
+                    $cached = \Illuminate\Support\Facades\Cache::get("table_member:{$tNum}");
+                    if (is_array($cached) && (int) ($cached['id'] ?? 0) === (int) $customer->id) {
+                        \Illuminate\Support\Facades\Cache::forget("table_member:{$tNum}");
+                    }
+                }
+            }
+
+            LoyaltyAuditLog::create([
+                'user_id' => $staffUser?->id,
+                'customer_id' => null,
+                'action' => 'customer_deleted',
+                'old_values' => $snapshot,
+                'new_values' => null,
+                'reason' => 'VIP member deleted by ' . ($staffUser?->role ?? 'staff'),
+            ]);
+
+            $customer->delete();
+        });
+
+        \App\Events\PosUpdated::safeDispatch('loyalty');
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'VIP member removed successfully.',
         ]);
     }
 
@@ -383,6 +475,8 @@ class CustomerController extends Controller
 
         $d = $r->validate([
             'reward_id' => 'required|exists:rewards,id',
+            'token' => 'nullable|string',
+            'table_number' => 'nullable|integer',
         ]);
 
         $reward = Reward::findOrFail($d['reward_id']);
@@ -395,7 +489,25 @@ class CustomerController extends Controller
             abort(422, "Insufficient points. You need " . (int)$reward->points_required . " points, but only have " . (int)$customer->points_balance . " points.");
         }
 
-        $result = DB::transaction(function () use ($customer, $reward) {
+        // Determine dining table context
+        $table = null;
+        if (!empty($d['token'])) {
+            $table = DiningTable::where('token', $d['token'])->first();
+        }
+        if (!$table && !empty($d['table_number'])) {
+            $table = DiningTable::where('number', $d['table_number'])->first();
+        }
+        if (!$table) {
+            $allTables = DiningTable::all();
+            foreach ($allTables as $cand) {
+                if (cache()->get("table_member:{$cand->number}") == $customer->id) {
+                    $table = $cand;
+                    break;
+                }
+            }
+        }
+
+        $result = DB::transaction(function () use ($customer, $reward, $table) {
             // Deduct points
             $tx = $this->pointsService->redeemPoints(
                 $customer,
@@ -408,24 +520,96 @@ class CustomerController extends Controller
             $cr = CustomerReward::create([
                 'customer_id' => $customer->id,
                 'reward_id' => $reward->id,
-                'status' => 'available',
+                'status' => 'redeemed',
                 'issued_at' => Carbon::now(),
                 'expires_at' => Carbon::now()->addDays(30),
+                'redeemed_at' => Carbon::now(),
             ]);
+
+            // 1. Notify staff via ServiceRequest
+            $staffNotice = "Points Reward Redeemed: {$customer->full_name} redeemed '{$reward->name}' ({$reward->points_required} pts)";
+            if ($reward->reward_type === 'free_item') {
+                $staffNotice .= " [Complimentary Item -> KDS Alerted]";
+            } elseif ($reward->reward_type === 'discount') {
+                $staffNotice .= " [Discount -$" . number_format($reward->reward_value, 2) . " Applied to Bill]";
+            }
+
+            ServiceRequest::create([
+                'dining_table_id' => $table ? $table->id : null,
+                'table_number' => $table ? $table->number : 0,
+                'type' => 'reward_redemption',
+                'notes' => $staffNotice,
+                'is_resolved' => false,
+            ]);
+
+            // 2. If Food or Drink item, alert Kitchen KDS & Cashier by creating complimentary order ticket
+            $complimentaryOrder = null;
+            if ($reward->reward_type === 'free_item') {
+                if ($table) {
+                    $hasUnpaid = Order::where('dining_table_id', $table->id)->whereNull('paid_at')->exists();
+                    $complimentaryOrder = Order::create([
+                        'dining_table_id' => $table->id,
+                        'status' => 'new',
+                        'is_addon' => $hasUnpaid,
+                        'notes' => "🎁 Complimentary VIP Reward: {$reward->name} (Redeemed with " . (int)$reward->points_required . " pts)",
+                        'customer_name' => "{$customer->full_name} ({$customer->phone})",
+                        'member_id' => $customer->id,
+                        'customer_id' => $customer->id,
+                        'total' => 0.00,
+                    ]);
+
+                    $complimentaryOrder->items()->create([
+                        'menu_item_id' => null,
+                        'name' => "🎁 {$reward->name}",
+                        'price' => 0.00,
+                        'quantity' => 1,
+                        'notes' => "Complimentary VIP Reward (Free with " . (int)$reward->points_required . " pts)",
+                        'is_member_exclusive' => true,
+                    ]);
+
+                    $cr->update(['order_id' => $complimentaryOrder->id]);
+                    $table->update(['status' => 'occupied']);
+                }
+            }
+
+            // 3. If Discount voucher, record to table's active redeemed discounts so it shows on their bills tab
+            if ($reward->reward_type === 'discount') {
+                if ($table) {
+                    $discountKey = "table_reward_discounts:{$table->number}";
+                    $currentDiscounts = cache()->get($discountKey, []);
+                    $currentDiscounts[] = [
+                        'customer_reward_id' => $cr->id,
+                        'reward_id' => $reward->id,
+                        'name' => $reward->name,
+                        'discount_amount' => (float) $reward->reward_value,
+                        'points_redeemed' => (int) $reward->points_required,
+                        'customer_id' => $customer->id,
+                        'customer_name' => $customer->full_name,
+                        'customer_phone' => $customer->phone,
+                        'redeemed_at' => Carbon::now()->toIso8601String(),
+                    ];
+                    cache()->put($discountKey, $currentDiscounts, Carbon::now()->addHours(12));
+                }
+            }
 
             return [
                 'customer_reward' => $cr,
                 'transaction' => $tx,
                 'new_points_balance' => (int) round($customer->points_balance),
+                'complimentary_order' => $complimentaryOrder,
             ];
         });
 
+        // Broadcast to KDS, Cashier, and Customer in real time
+        PosUpdated::safeDispatch();
+
         return response()->json([
             'ok' => true,
-            'message' => "Successfully redeemed {$reward->name}!",
+            'message' => "Successfully redeemed {$reward->name}! Staff and Kitchen have been notified.",
             'reward' => $reward,
             'new_points_balance' => $result['new_points_balance'],
             'customer_reward_id' => $result['customer_reward']->id,
+            'complimentary_order' => $result['complimentary_order']?->toApi(),
         ]);
     }
 }

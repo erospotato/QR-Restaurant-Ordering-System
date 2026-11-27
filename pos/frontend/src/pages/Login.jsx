@@ -75,7 +75,7 @@ export default function Login() {
                   onClick={() => handlePreset(p)}
                   className={`rounded-xl px-2 py-1.5 text-xs font-semibold transition ${
                     active
-                      ? 'bg-warm-900 text-white shadow-xs'
+                      ? 'bg-brand text-white shadow-xs'
                       : 'bg-warm-100/80 text-warm-700 hover:bg-warm-200/80 hover:text-warm-950'
                   }`}
                 >
@@ -126,7 +126,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="mt-2 w-full rounded-xl bg-warm-900 py-3 font-display text-sm font-semibold text-white shadow-md hover:bg-brand hover:text-white active:bg-brand-dark active:text-white transition duration-150 disabled:opacity-50"
+            className="mt-2 w-full rounded-xl bg-brand py-3 font-display text-sm font-semibold text-white shadow-md hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white transition duration-150 disabled:opacity-50"
           >
             {loading ? 'Authenticating...' : 'Sign In to Station →'}
           </button>

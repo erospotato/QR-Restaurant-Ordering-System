@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { api, playChime, useLive } from '../lib'
 import { useAuth } from '../context/AuthContext'
@@ -15,6 +15,21 @@ export default function StaffLayout() {
   const [serviceCalls, setServiceCalls] = useState([])
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [dataLoading, setDataLoading] = useState(true)
+
+  const soundEnabledRef = useRef(soundEnabled)
+  soundEnabledRef.current = soundEnabled
+
+  const alertsInitializedRef = useRef(false)
+  const knownOrderIdsRef = useRef(new Set())
+  const knownServiceCallIdsRef = useRef(new Set())
+  const knownStockAlertIdsRef = useRef(new Set())
+
+  useEffect(() => {
+    alertsInitializedRef.current = false
+    knownOrderIdsRef.current = new Set()
+    knownServiceCallIdsRef.current = new Set()
+    knownStockAlertIdsRef.current = new Set()
+  }, [user?.id])
 
   const isSuper = ['admin', 'owner'].includes(user?.role)
   const isManager = ['manager', 'admin', 'owner'].includes(user?.role)
@@ -61,14 +76,38 @@ export default function StaffLayout() {
     try {
       const [o, t, sc, ing, m, s] = await Promise.all(fetchers)
 
-      setOrders(Array.isArray(o) ? o : [])
-      setTables(Array.isArray(t) ? t : [])
-      setServiceCalls(Array.isArray(sc) ? sc : [])
-      setStockData(
+      const nextOrders = Array.isArray(o) ? o : []
+      const nextCalls = Array.isArray(sc) ? sc : []
+      const nextStock =
         ing && typeof ing === 'object' && Array.isArray(ing.ingredients)
           ? ing
           : { ingredients: [], alerts: [], low_count: 0 }
-      )
+      const nextStockAlerts = Array.isArray(nextStock.alerts) ? nextStock.alerts : []
+
+      if (alertsInitializedRef.current && soundEnabledRef.current) {
+        const hasNewOrder = nextOrders.some(
+          (ord) => ord.status === 'new' && !knownOrderIdsRef.current.has(ord.id)
+        )
+        const hasNewServiceCall = nextCalls.some(
+          (call) => !knownServiceCallIdsRef.current.has(call.id)
+        )
+        const hasNewStockAlert = nextStockAlerts.some(
+          (alert) => !knownStockAlertIdsRef.current.has(alert.id)
+        )
+        if (hasNewOrder || hasNewServiceCall || hasNewStockAlert) {
+          playChime('ticket')
+        }
+      }
+
+      knownOrderIdsRef.current = new Set(nextOrders.map((ord) => ord.id))
+      knownServiceCallIdsRef.current = new Set(nextCalls.map((call) => call.id))
+      knownStockAlertIdsRef.current = new Set(nextStockAlerts.map((alert) => alert.id))
+      alertsInitializedRef.current = true
+
+      setOrders(nextOrders)
+      setTables(Array.isArray(t) ? t : [])
+      setServiceCalls(nextCalls)
+      setStockData(nextStock)
       setMenu(Array.isArray(m) ? m : [])
       if (s) setSales(s)
     } catch (e) {
@@ -82,10 +121,7 @@ export default function StaffLayout() {
     refreshAll()
   }, [refreshAll])
 
-  useLive(Boolean(user), () => {
-    refreshAll()
-    if (soundEnabled) playChime('ticket')
-  })
+  useLive(Boolean(user), refreshAll)
 
   const resolveService = async (id) => {
     try {
@@ -97,11 +133,7 @@ export default function StaffLayout() {
   }
 
   const toggleSound = () => {
-    setSoundEnabled((prev) => {
-      const next = !prev
-      if (next) playChime('ticket')
-      return next
-    })
+    setSoundEnabled((prev) => !prev)
   }
 
   return (

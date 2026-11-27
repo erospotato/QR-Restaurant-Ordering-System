@@ -81,7 +81,7 @@ export default function SalesDashboard({ sales, reload }) {
           </button>
           <button
             onClick={reload}
-            className="rounded-xl bg-warm-900 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white transition"
+            className="rounded-xl bg-brand px-3.5 py-1.5 text-xs sm:text-sm font-medium text-white hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white transition"
           >
             Refresh
           </button>

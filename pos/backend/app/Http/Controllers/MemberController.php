@@ -52,25 +52,20 @@ class MemberController extends Controller
      */
     public function lookup(Request $r)
     {
-        $phone = trim($r->input('phone', $r->query('phone', $r->query('q', $r->input('number', '')))));
-        if (!$phone) {
-            abort(422, 'Phone number or member ID is required.');
+        $identifier = trim($r->input('phone', $r->query('phone', $r->query('q', $r->input('number', $r->input('username', ''))))));
+        if (!$identifier) {
+            abort(422, 'Username, phone number, or member ID is required.');
         }
 
-        $cleanPhone = preg_replace('/[^0-9]/', '', $phone);
-
-        $customer = Customer::where('phone', $phone)
-            ->orWhere('phone', $cleanPhone)
-            ->orWhere('id', $phone)
-            ->first();
+        $password = trim($r->input('password', $r->query('password', '')));
+        $customer = Customer::findByLoginIdentifier($identifier, $password ?: null);
 
         if (!$customer) {
-            abort(404, 'Member not found. Check the phone number or register a new membership.');
+            abort(404, 'Member not found. Check your username or phone number, or register a new membership.');
         }
 
         // If not authenticated as staff, require password verification
         if (!auth('sanctum')->check()) {
-            $password = trim($r->input('password', $r->query('password', '')));
             if (!$password) {
                 abort(422, 'Membership password is required to access your account.');
             }

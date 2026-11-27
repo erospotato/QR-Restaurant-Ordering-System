@@ -80,9 +80,9 @@ class LoyaltyService
     /**
      * Subscribe or renew customer to Maison Privé annual membership
      */
-    public function subscribeMaisonPrive(Customer $customer, float $amountPaid = 49.99): CustomerMembership
+    public function subscribeMaisonPrive(Customer $customer, float $amountPaid = 49.99, ?string $paymentMethod = null): CustomerMembership
     {
-        return DB::transaction(function () use ($customer, $amountPaid) {
+        return DB::transaction(function () use ($customer, $amountPaid, $paymentMethod) {
             $plan = MembershipPlan::firstOrCreate(
                 ['name' => 'Maison Privé'],
                 [
@@ -110,17 +110,22 @@ class LoyaltyService
                 'status' => 'active',
             ]);
 
+            $newValues = [
+                'plan' => 'Maison Privé',
+                'start_date' => $startDate->toDateString(),
+                'end_date' => $endDate->toDateString(),
+                'amount_paid' => $amountPaid,
+            ];
+            if ($paymentMethod) {
+                $newValues['payment_method'] = $paymentMethod;
+            }
+
             LoyaltyAuditLog::create([
                 'user_id' => auth('sanctum')->id(),
                 'customer_id' => $customer->id,
                 'action' => 'membership_subscribed',
-                'new_values' => [
-                    'plan' => 'Maison Privé',
-                    'start_date' => $startDate->toDateString(),
-                    'end_date' => $endDate->toDateString(),
-                    'amount_paid' => $amountPaid,
-                ],
-                'reason' => 'Subscribed to Maison Privé Annual Plan ($49.99)',
+                'new_values' => $newValues,
+                'reason' => 'Subscribed to Maison Privé Annual Plan ($' . number_format($amountPaid, 2) . ')' . ($paymentMethod ? " via {$paymentMethod}" : ''),
             ]);
 
             return $membership;

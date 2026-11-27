@@ -47,6 +47,7 @@ class TableController extends Controller
                 'unpaid_total' => (float) $totalBill,
                 'token' => $canSeeToken ? $t->token : null,
                 'member' => $tableMember ? $tableMember->toApi() : null,
+                'redeemed_discounts' => cache()->get("table_reward_discounts:{$t->number}", []),
             ];
         });
     }
@@ -61,6 +62,7 @@ class TableController extends Controller
                 return response()->json([
                     'table' => (int) $settled['table_number'],
                     'settled' => true,
+                    'receipt' => $settled['receipt'] ?? null,
                     'message' => 'This dining session has ended and the bill has been settled. Please scan the QR code on your table to start a new session.',
                 ], 403);
             }
@@ -78,6 +80,7 @@ class TableController extends Controller
             'token' => $t->token,
             'settled' => false,
             'member' => $tableMember ? $tableMember->toApi() : null,
+            'redeemed_discounts' => cache()->get("table_reward_discounts:{$t->number}", []),
         ]);
     }
 
@@ -117,6 +120,7 @@ class TableController extends Controller
             if ($settled) {
                 return response()->json([
                     'settled' => true,
+                    'receipt' => $settled['receipt'] ?? null,
                     'message' => 'This dining session has ended and the bill has been settled.',
                 ], 403);
             }
@@ -430,6 +434,7 @@ class TableController extends Controller
 
             // Clear table member cache if any
             cache()->forget("table_member:{$table->number}");
+            cache()->forget("table_reward_discounts:{$table->number}");
 
             // Reset any merged tables if merged
             DiningTable::where('merged_with', "Table {$table->number}")->update(['status' => 'available']);
@@ -450,7 +455,7 @@ class TableController extends Controller
         $t = DiningTable::where('number', $number)->firstOrFail();
         $method = $r->input('payment_method', 'cash');
 
-        $unpaidOrders = Order::where('dining_table_id', $t->id)->whereNull('paid_at')->get();
+        $unpaidOrders = Order::with('items')->where('dining_table_id', $t->id)->whereNull('paid_at')->get();
         if ($unpaidOrders->isEmpty()) {
             abort(422, "Table #{$number} has no active orders to settle.");
         }
@@ -536,13 +541,48 @@ class TableController extends Controller
                 'points_redeemed' => $pointsRedeemed,
             ]);
 
+        // Build receipt snapshot for customer & staff display
+        $receiptItems = $unpaidOrders->flatMap(fn ($o) => $o->items)->map(fn ($it) => [
+            'name' => $it->name,
+            'price' => (float) $it->price,
+            'qty' => (int) $it->quantity,
+        ])->values()->all();
+
+        $receiptPayload = [
+            'receipt_no' => $primaryOrder ? str_pad((string) $primaryOrder->id, 4, '0', STR_PAD_LEFT) : '0001',
+            'table' => $t->number,
+            'date' => now()->toIso8601String(),
+            'items' => $receiptItems,
+            'subtotal' => round($subtotal, 2),
+            'discount_amount' => round($discountAmount, 2),
+            'discount_note' => $r->input('discount_note'),
+            'tip' => round($tip, 2),
+            'tax' => round($tax, 2),
+            'final_total' => $finalTotal,
+            'payment_method' => $method,
+            'amount_tendered' => $tendered,
+            'change_due' => $change,
+            'customer_name' => $member ? $member->full_name : ($r->input('customer_name') ?: null),
+            'member' => $member ? [
+                'name' => $member->full_name,
+                'tier' => ucfirst($member->loyalty_tier),
+                'is_prive' => $member->hasActiveMaisonPrive(),
+                'points_earned' => $pointsEarned,
+                'points_redeemed' => $pointsRedeemed,
+                'points_balance' => (int) round($member->points_balance),
+                'tier_upgraded' => $loyaltyResult ? $loyaltyResult['tier_upgraded'] : false,
+            ] : null,
+        ];
+
         // Invalidate current table session token and clear linked member
         cache()->forget("table_member:{$t->number}");
+        cache()->forget("table_reward_discounts:{$t->number}");
         $oldToken = $t->token;
         if ($oldToken) {
             cache()->put("settled_token:{$oldToken}", [
                 'table_number' => $t->number,
                 'settled_at' => now()->toIso8601String(),
+                'receipt' => $receiptPayload,
             ], now()->addHours(48));
         }
 
@@ -558,10 +598,12 @@ class TableController extends Controller
         $auxTables = DiningTable::where('merged_with', "Table {$number}")->get();
         foreach ($auxTables as $aux) {
             cache()->forget("table_member:{$aux->number}");
+            cache()->forget("table_reward_discounts:{$aux->number}");
             if ($aux->token) {
                 cache()->put("settled_token:{$aux->token}", [
                     'table_number' => $aux->number,
                     'settled_at' => now()->toIso8601String(),
+                    'receipt' => $receiptPayload,
                 ], now()->addHours(48));
             }
             $aux->update([

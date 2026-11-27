@@ -33,6 +33,14 @@
     -webkit-tap-highlight-color: transparent;
     font-size: 15px;
   }
+  /* Prevent iOS/mobile auto-zoom when focusing inputs smaller than 16px */
+  @media (max-width: 767px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
   body {
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
     color: #1c1917;

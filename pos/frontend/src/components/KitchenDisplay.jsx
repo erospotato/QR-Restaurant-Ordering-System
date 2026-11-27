@@ -1,9 +1,12 @@
 import React, { useState } from 'react'
 import { api, ago } from '../lib'
+import { useDialog } from '../context/DialogContext'
 
 export default function KitchenDisplay({ orders = [], reload = () => {} }) {
+  const { confirm: confirmDialog, toast } = useDialog()
   const [struckItems, setStruckItems] = useState({})
   const [filterCat, setFilterCat] = useState('all')
+  const [removingItemId, setRemovingItemId] = useState(null)
 
   const toggleItemStrike = (key) => {
     setStruckItems((prev) => ({ ...prev, [key]: !prev[key] }))
@@ -12,6 +15,34 @@ export default function KitchenDisplay({ orders = [], reload = () => {} }) {
   const advance = async (orderId, status) => {
     await api(`/orders/${orderId}`, { method: 'PATCH', body: { status } })
     reload()
+  }
+
+  const handleRemoveItem = async (e, tableNumber, item) => {
+    e.stopPropagation()
+    if (!tableNumber || !item?.id || removingItemId) return
+
+    const ok = await confirmDialog({
+      title: 'Remove Unavailable Item',
+      message: `Remove "${item.qty}× ${item.name}" from Table #${tableNumber}? It will also be removed from the table's bill.`,
+      confirmText: 'Yes, Remove Item',
+      cancelText: 'Keep Item',
+      type: 'danger',
+    })
+    if (!ok) return
+
+    setRemovingItemId(item.id)
+    try {
+      await api(`/staff/tables/${tableNumber}/remove-item`, {
+        method: 'POST',
+        body: { item_id: item.id },
+      })
+      toast(`Removed "${item.name}" from Table #${tableNumber}`, 'success')
+      reload()
+    } catch (err) {
+      toast(err.message || 'Failed to remove item', 'error')
+    } finally {
+      setRemovingItemId(null)
+    }
   }
 
   const stages = [
@@ -42,7 +73,7 @@ export default function KitchenDisplay({ orders = [], reload = () => {} }) {
                 onClick={() => setFilterCat(c)}
                 className={`rounded-lg px-2.5 py-1 uppercase text-xs font-medium tracking-wide transition ${
                   filterCat === c
-                    ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold'
+                    ? 'bg-brand text-white hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white shadow-xs font-semibold'
                     : 'text-warm-600 hover:text-warm-950 hover:bg-warm-200/70 active:bg-warm-300 active:text-warm-950'
                 }`}
               >
@@ -52,7 +83,7 @@ export default function KitchenDisplay({ orders = [], reload = () => {} }) {
           </div>
           <button
             onClick={reload}
-            className="rounded-xl bg-warm-900 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white transition"
+            className="rounded-xl bg-brand px-3.5 py-1.5 text-xs sm:text-sm font-medium text-white hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white transition"
           >
             Refresh
           </button>
@@ -117,11 +148,11 @@ export default function KitchenDisplay({ orders = [], reload = () => {} }) {
                       {/* Dishes Checklist */}
                       <div className="my-2.5 space-y-1.5">
                         {ticket.items.map((it, idx) => {
-                          const key = `${ticket.id}_${idx}`
+                          const key = `${ticket.id}_${it.id ?? idx}`
                           const isStruck = !!struckItems[key]
                           return (
                             <div
-                              key={idx}
+                              key={it.id ?? idx}
                               onClick={() => toggleItemStrike(key)}
                               className={`cursor-pointer rounded-xl p-2 transition border ${
                                 isStruck
@@ -129,21 +160,37 @@ export default function KitchenDisplay({ orders = [], reload = () => {} }) {
                                   : 'bg-warm-50/50 border-warm-200 hover:bg-warm-100/70'
                               }`}
                             >
-                              <div className="flex items-center justify-between text-xs sm:text-sm">
+                              <div className="flex items-center justify-between gap-2 text-xs sm:text-sm">
                                 <span className="font-medium text-warm-900 flex items-center gap-1.5 flex-wrap">
                                   <span className="inline-block w-7 font-mono text-brand font-semibold">
                                     {it.qty}×
                                   </span>
                                   <span>{it.name}</span>
-                                  {it.is_member_exclusive && (
+                                  {(it.name?.includes('🎁') || it.price === 0) ? (
+                                    <span className="rounded bg-emerald-100 text-emerald-900 border border-emerald-300 text-[9px] font-bold px-1.5 py-0.2">
+                                      🎁 Complimentary Reward
+                                    </span>
+                                  ) : it.is_member_exclusive ? (
                                     <span className="rounded bg-purple-100 text-purple-900 border border-purple-200 text-[9px] font-bold px-1.5 py-0.2">
                                       ✦ VIP Exclusive
                                     </span>
-                                  )}
+                                  ) : null}
                                 </span>
-                                <span className="font-mono text-[10px] font-semibold text-warm-500">
-                                  {isStruck ? 'DONE' : 'PLATING'}
-                                </span>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className="font-mono text-[10px] font-semibold text-warm-500">
+                                    {isStruck ? 'DONE' : 'PLATING'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleRemoveItem(e, ticket.table, it)}
+                                    disabled={removingItemId === it.id}
+                                    className="h-6 w-6 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-40 flex items-center justify-center text-xs transition"
+                                    title="Remove unavailable item"
+                                    aria-label={`Remove ${it.name}`}
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
                               </div>
                               {it.notes && (
                                 <p className="mt-0.5 ml-7 text-xs font-medium text-amber-900 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 inline-block">
@@ -165,7 +212,7 @@ export default function KitchenDisplay({ orders = [], reload = () => {} }) {
                       {/* Advance Button */}
                       <button
                         onClick={() => advance(ticket.id, stg.next)}
-                        className="w-full rounded-xl bg-warm-900 py-2.5 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-xs hover:bg-brand hover:text-white active:bg-brand-dark active:text-white active:scale-[0.98] transition"
+                        className="w-full rounded-xl bg-brand py-2.5 font-display text-xs sm:text-sm font-semibold tracking-wide text-white uppercase shadow-xs hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white active:scale-[0.98] transition"
                       >
                         {stg.btn} →
                       </button>

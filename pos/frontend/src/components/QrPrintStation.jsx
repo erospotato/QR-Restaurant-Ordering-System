@@ -116,7 +116,7 @@ export default function QrPrintStation({ tables = [], reload = () => {} }) {
           <button
             type="button"
             onClick={() => window.print()}
-            className="flex items-center gap-2 rounded-2xl bg-warm-900 px-4 py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-soft hover:bg-brand active:scale-95 transition cursor-pointer"
+            className="flex items-center gap-2 rounded-2xl bg-brand px-4 py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-soft hover:bg-brand-dark active:bg-brand-900 active:scale-95 transition cursor-pointer"
           >
             <span>🖨️</span>
             <span>Print All Placards</span>
@@ -201,7 +201,7 @@ export default function QrPrintStation({ tables = [], reload = () => {} }) {
             />
             <button
               type="submit"
-              className="rounded-xl bg-warm-900 px-4 py-1.5 text-xs font-semibold text-white hover:bg-warm-800 transition cursor-pointer"
+              className="rounded-xl bg-brand px-4 py-1.5 text-xs font-semibold text-white hover:bg-brand-dark active:bg-brand-900 transition cursor-pointer"
             >
               Apply
             </button>

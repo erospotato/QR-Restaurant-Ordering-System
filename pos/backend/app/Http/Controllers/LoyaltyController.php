@@ -195,12 +195,15 @@ class LoyaltyController extends Controller
             'customer_id' => 'required|exists:customers,id',
             'plan_name' => 'nullable|string',
             'amount_paid' => 'nullable|numeric|min:0',
+            'payment_method' => 'nullable|in:cash,card,qr,transfer,ewallet',
+            'amount_tendered' => 'nullable|numeric|min:0',
         ]);
 
         $customer = Customer::findOrFail($d['customer_id']);
         $amount = isset($d['amount_paid']) ? (float) $d['amount_paid'] : 49.99;
+        $paymentMethod = $d['payment_method'] ?? null;
 
-        $membership = $this->loyaltyService->subscribeMaisonPrive($customer, $amount);
+        $membership = $this->loyaltyService->subscribeMaisonPrive($customer, $amount, $paymentMethod);
 
         return response()->json([
             'ok' => true,
@@ -211,6 +214,7 @@ class LoyaltyController extends Controller
                 'start_date' => $membership->start_date->format('Y-m-d'),
                 'end_date' => $membership->end_date->format('Y-m-d'),
                 'amount_paid' => $membership->amount_paid,
+                'payment_method' => $paymentMethod,
                 'status' => $membership->status,
             ],
             'customer' => $customer->fresh()->toApi(),

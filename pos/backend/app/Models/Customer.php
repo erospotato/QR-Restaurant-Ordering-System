@@ -125,6 +125,51 @@ class Customer extends Model
         return $this->password === $inputPassword;
     }
 
+    /**
+     * Find a customer by phone number, username/full name, email, or card ID.
+     */
+    public static function findByLoginIdentifier(string $identifier, ?string $password = null): ?self
+    {
+        $trimmed = trim($identifier);
+        if ($trimmed === '') {
+            return null;
+        }
+
+        $cleanPhone = preg_replace('/[^0-9]/', '', $trimmed);
+        $cardId = null;
+        if (preg_match('/^(?:#|mm[\s·-]*)?0*(\d+)$/i', $trimmed, $m)) {
+            $cardId = (int) $m[1];
+        }
+
+        $candidates = self::where(function ($q) use ($trimmed, $cleanPhone, $cardId) {
+            $q->where('phone', $trimmed);
+            if ($cleanPhone !== '') {
+                $q->orWhere('phone', $cleanPhone);
+            }
+            if ($cardId !== null && $cardId > 0) {
+                $q->orWhere('id', $cardId);
+            }
+            $lower = mb_strtolower($trimmed);
+            $q->orWhereRaw('LOWER(full_name) = ?', [$lower])
+              ->orWhereRaw('LOWER(email) = ?', [$lower]);
+        })->get();
+
+        // Fallback: allow single-word first-name lookup (e.g. "Alice" -> "Alice Johnson")
+        if ($candidates->isEmpty() && !str_contains($trimmed, ' ') && mb_strlen($trimmed) >= 2) {
+            $candidates = self::whereRaw('LOWER(full_name) LIKE ?', [mb_strtolower($trimmed) . ' %'])->get();
+        }
+
+        if ($candidates->isEmpty()) {
+            return null;
+        }
+
+        if ($password !== null && $password !== '') {
+            return $candidates->first(fn (self $c) => $c->verifyPassword($password)) ?? $candidates->first();
+        }
+
+        return $candidates->first();
+    }
+
     public function hasActiveMaisonPrive(): bool
     {
         return $this->activeMembership()
@@ -286,6 +331,7 @@ class Customer extends Model
                     'expires_at' => $birthdayReward->expires_at?->format('Y-m-d'),
                 ] : null,
             ],
+            'notes' => $this->notes,
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

@@ -81,12 +81,14 @@ export default function StaffNavbar({
     <header className="sticky top-0 z-40 border-b border-warm-200/90 bg-white shadow-soft print:hidden">
       {/* Service Calls Live Marquee / Alert Ribbon */}
       {serviceCalls.length > 0 && (
-        <div className="bg-amber-500 px-4 py-1.5 text-xs sm:text-sm font-medium text-white flex items-center justify-between gap-3 animate-pulse">
+        <div className={`${serviceCalls[0].type === 'reward_redemption' ? 'bg-purple-800' : 'bg-amber-500'} px-4 py-1.5 text-xs sm:text-sm font-medium text-white flex items-center justify-between gap-3 animate-pulse`}>
           <div className="flex items-center gap-2 truncate flex-1 min-w-0">
-            <Icons.Bell />
-            <span className="truncate">
-              TABLE ASSISTANCE: Table #{serviceCalls[0].table_number} needs {serviceCalls[0].type.toUpperCase()}
-              {serviceCalls[0].notes ? ` (${serviceCalls[0].notes})` : ''}
+            {serviceCalls[0].type === 'reward_redemption' ? <span className="text-base">🎁</span> : <Icons.Bell />}
+            <span className="truncate font-semibold">
+              {serviceCalls[0].type === 'reward_redemption'
+                ? `VIP REWARD REDEEMED: Table #${serviceCalls[0].table_number} - ${serviceCalls[0].notes}`
+                : `TABLE ASSISTANCE: Table #${serviceCalls[0].table_number} needs ${serviceCalls[0].type.toUpperCase()}${serviceCalls[0].notes ? ` (${serviceCalls[0].notes})` : ''}`
+              }
             </span>
           </div>
           {onResolveService && (
@@ -149,7 +151,7 @@ export default function StaffNavbar({
               type="button"
               onClick={onToggleSound}
               className="rounded-xl p-2 text-warm-600 hover:bg-brand hover:text-white active:bg-brand-dark transition"
-              title={soundEnabled ? 'Chime sound enabled' : 'Chime sound muted'}
+              title={soundEnabled ? 'Alert chime enabled' : 'Alert chime muted'}
             >
               <Icons.Volume muted={!soundEnabled} />
             </button>
@@ -171,7 +173,7 @@ export default function StaffNavbar({
           <button
             type="button"
             onClick={() => setConfirmModal('exit')}
-            className="rounded-xl bg-warm-900 px-3 sm:px-3.5 py-1.5 text-xs sm:text-sm font-semibold text-white hover:bg-brand hover:text-white active:bg-brand-dark transition shadow-xs cursor-pointer"
+            className="rounded-xl bg-brand px-3 sm:px-3.5 py-1.5 text-xs sm:text-sm font-semibold text-white hover:bg-brand-dark hover:text-white active:bg-brand-900 transition shadow-xs cursor-pointer"
             title="End shift and log out"
           >
             Exit
@@ -231,7 +233,7 @@ export default function StaffNavbar({
                       Switch Staff Account?
                     </h3>
                     <p className="mt-1 text-xs sm:text-sm text-warm-600 leading-relaxed">
-                      Are you sure you want to switch to another staff profile? You will be redirected to the sign-in screen to select or enter another account.
+                      You will be redirected to the sign-in screen to select or enter another account.
                     </p>
                   </div>
                 </div>
@@ -248,10 +250,7 @@ export default function StaffNavbar({
                   </span>
                 </div>
 
-                <div className="mt-3 text-[11px] text-amber-800 bg-amber-50 border border-amber-200/80 rounded-xl px-3 py-2 flex items-center gap-2">
-                  <span className="text-sm">⚠️</span>
-                  <span>Unsaved table drafts or pending order entries on this terminal may be reset.</span>
-                </div>
+                
 
                 {/* Actions */}
                 <div className="mt-6 flex flex-col-reverse sm:flex-row items-center justify-end gap-2.5">
@@ -268,7 +267,7 @@ export default function StaffNavbar({
                       setConfirmModal(null)
                       navigate('/login')
                     }}
-                    className="w-full sm:w-auto rounded-xl bg-warm-900 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-warm-800 active:bg-warm-950 transition shadow-xs flex items-center justify-center gap-1.5"
+                    className="w-full sm:w-auto rounded-xl bg-brand px-4 py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-brand-dark active:bg-brand-900 transition shadow-xs flex items-center justify-center gap-1.5"
                   >
                     <span>Yes, Switch User</span>
                     <span>→</span>

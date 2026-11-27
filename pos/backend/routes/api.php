@@ -53,6 +53,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/staff/service-calls', [TableController::class, 'serviceCalls']);
         Route::patch('/staff/service-calls/{call}/resolve', [TableController::class, 'resolveServiceCall']);
         Route::patch('/orders/{order}', [OrderController::class, 'status']);
+        Route::post('/staff/tables/{number}/remove-item', [TableController::class, 'removeItem']);
     });
 
     // Kitchen + Manager (and Owner + Admin) - Inventory usage & restock (Cashier excluded)
@@ -68,7 +69,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/staff/menu', [MenuController::class, 'all']);
         Route::post('/tables/{number}/pay', [TableController::class, 'pay']);
         Route::post('/staff/tables/{number}/add-items', [TableController::class, 'addItem']);
-        Route::post('/staff/tables/{number}/remove-item', [TableController::class, 'removeItem']);
         Route::post('/staff/tables/{number}/cancel-order', [TableController::class, 'cancelOrder']);
         Route::post('/staff/tables/move', [TableController::class, 'move']);
         Route::post('/staff/tables/merge', [TableController::class, 'merge']);
@@ -111,11 +111,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/staff/sales', [OrderController::class, 'sales']);
     });
 
-    // Manager, Admin & Owner: Staff user accounts management (CRUD)
+    // Manager, Admin & Owner: Staff user accounts & VIP member CRUD management
     Route::middleware(EnsureRole::class . ':admin,owner,manager')->group(function () {
         Route::get('/staff/users', [StaffUserController::class, 'index']);
         Route::post('/staff/users', [StaffUserController::class, 'store']);
         Route::patch('/staff/users/{user}', [StaffUserController::class, 'update']);
         Route::delete('/staff/users/{user}', [StaffUserController::class, 'destroy']);
+
+        Route::patch('/staff/members/{id}', [CustomerController::class, 'update']);
+        Route::put('/staff/members/{id}', [CustomerController::class, 'update']);
+        Route::delete('/staff/members/{id}', [CustomerController::class, 'destroy']);
     });
 });

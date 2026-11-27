@@ -39,7 +39,7 @@ export default class ErrorBoundary extends React.Component {
           <div className="mt-5 flex gap-3">
             <button
               onClick={this.handleRetry}
-              className="rounded-xl bg-warm-900 px-5 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-warm-800 transition active:scale-95"
+              className="rounded-xl bg-brand px-5 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-dark transition active:scale-95"
             >
               Reload Station
             </button>

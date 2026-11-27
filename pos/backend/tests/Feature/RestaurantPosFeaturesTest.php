@@ -144,6 +144,36 @@ class RestaurantPosFeaturesTest extends TestCase
             'ingredient_id' => $ingredient->id,
             'is_resolved' => false,
         ]);
+
+        // 5. Kitchen removes an unavailable item from a table's active order
+        $dish2 = MenuItem::skip(1)->first();
+        $table2 = DiningTable::skip(1)->first();
+        $this->postJson('/api/orders', [
+            'token' => $table2->token,
+            'items' => [
+                ['id' => $dish->id, 'qty' => 1],
+                ['id' => $dish2->id, 'qty' => 2],
+            ],
+        ])->assertStatus(201);
+
+        $table2Orders = $this->withHeader('Authorization', "Bearer {$token}")
+            ->getJson('/api/staff/orders')
+            ->json();
+        $targetOrder = collect($table2Orders)->firstWhere('table', $table2->number);
+        $this->assertNotNull($targetOrder);
+        $itemToRemove = $targetOrder['items'][0];
+
+        $removeRes = $this->withHeader('Authorization', "Bearer {$token}")
+            ->postJson("/api/staff/tables/{$table2->number}/remove-item", [
+                'item_id' => $itemToRemove['id'],
+            ]);
+        $removeRes->assertStatus(200)->assertJson(['ok' => true]);
+
+        $this->assertDatabaseMissing('order_items', ['id' => $itemToRemove['id']]);
+        $this->assertEquals(
+            round((float) $dish2->price * 2, 2),
+            round((float) Order::find($targetOrder['id'])->total, 2)
+        );
     }
 
     public function test_cashier_and_table_payment(): void

@@ -90,7 +90,7 @@ export default function MenuCatalog({ menu = [], reload = () => {} }) {
               setEditingItem(null)
               setShowAdd(true)
             }}
-            className="rounded-xl bg-brand px-3.5 py-2 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:from-purple-900 hover:to-amber-800 active:scale-95 transition flex items-center gap-1.5"
+            className="rounded-xl bg-brand px-3.5 py-2 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-dark active:scale-95 transition flex items-center gap-1.5"
           >
             <span>✦ Add Promo Item</span>
           </button>
@@ -112,7 +112,7 @@ export default function MenuCatalog({ menu = [], reload = () => {} }) {
           onClick={() => setFilterTag('all')}
           className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
             filterTag === 'all'
-              ? 'bg-warm-900 text-white shadow-xs'
+              ? 'bg-brand text-white shadow-xs'
               : 'bg-white text-warm-700 border border-warm-200 hover:bg-warm-100'
           }`}
         >
@@ -122,7 +122,7 @@ export default function MenuCatalog({ menu = [], reload = () => {} }) {
           onClick={() => setFilterTag('promo')}
           className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
             filterTag === 'promo'
-              ? 'bg-gradient-to-r from-purple-800 to-amber-700 text-white shadow-xs'
+              ? 'bg-purple-900 text-white shadow-xs'
               : 'bg-purple-50 text-purple-900 border border-purple-200 hover:bg-purple-100'
           }`}
         >
@@ -184,7 +184,7 @@ export default function MenuCatalog({ menu = [], reload = () => {} }) {
               setCategory('all')
               setFilterTag('all')
             }}
-            className="mt-3 rounded-xl bg-warm-900 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-brand transition"
+            className="mt-3 rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-brand-dark transition"
           >
             Reset Filters
           </button>
@@ -198,7 +198,7 @@ export default function MenuCatalog({ menu = [], reload = () => {} }) {
               key={item.id}
               className={`flex flex-col justify-between rounded-2xl border p-3.5 shadow-card transition-all ${
                 item.is_member_exclusive
-                  ? 'border-purple-300 bg-gradient-to-b from-purple-50/40 via-white to-white'
+                  ? 'border-purple-300 bg-purple-50/50'
                   : 'border-warm-200 bg-white'
               }`}
             >
@@ -222,7 +222,7 @@ export default function MenuCatalog({ menu = [], reload = () => {} }) {
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="font-display text-sm sm:text-base font-semibold text-warm-900 truncate">{item.name}</span>
                     {item.is_member_exclusive && (
-                      <span className="rounded bg-gradient-to-r from-purple-900 to-amber-900 text-amber-200 px-1.5 py-0.2 text-[9px] font-bold border border-amber-400/40">
+                      <span className="rounded bg-purple-900 text-amber-200 px-1.5 py-0.2 text-[9px] font-bold border border-purple-700">
                         {item.promo_badge || 'MEMBER EXCLUSIVE'}
                       </span>
                     )}
@@ -461,7 +461,7 @@ function DishFormModal({ item, onClose, onSaved, existingCategories = [] }) {
                 onClick={() => setCategoryMode('select')}
                 className={`rounded-lg px-2.5 py-1 transition ${
                   categoryMode === 'select'
-                    ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold'
+                    ? 'bg-brand text-white hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white shadow-xs font-semibold'
                     : 'text-warm-600 hover:text-warm-950 hover:bg-warm-100 active:bg-warm-200 active:text-warm-950'
                 }`}
               >
@@ -472,7 +472,7 @@ function DishFormModal({ item, onClose, onSaved, existingCategories = [] }) {
                 onClick={() => setCategoryMode('new')}
                 className={`rounded-lg px-2.5 py-1 transition ${
                   categoryMode === 'new'
-                    ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold'
+                    ? 'bg-brand text-white hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white shadow-xs font-semibold'
                     : 'text-warm-600 hover:text-warm-950 hover:bg-warm-100 active:bg-warm-200 active:text-warm-950'
                 }`}
               >
@@ -513,7 +513,7 @@ function DishFormModal({ item, onClose, onSaved, existingCategories = [] }) {
                     onClick={() => setSelectedCategory(c)}
                     className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
                       selectedCategory === c
-                        ? 'bg-warm-900 text-white shadow-xs'
+                        ? 'bg-brand text-white shadow-xs'
                         : 'bg-white text-warm-700 border border-warm-200 hover:bg-warm-100'
                     }`}
                   >
@@ -571,7 +571,7 @@ function DishFormModal({ item, onClose, onSaved, existingCategories = [] }) {
         {/* Member Exclusive Promotional Item Section */}
         <div className={`rounded-2xl border transition-all p-3.5 space-y-3 ${
           isMemberExclusive
-            ? 'border-purple-300 bg-gradient-to-br from-purple-50/70 via-warm-50 to-amber-50/40 shadow-xs'
+            ? 'border-purple-300 bg-purple-50 shadow-xs'
             : 'border-warm-200 bg-warm-50/50'
         }`}>
           <div className="flex items-center justify-between">

@@ -26,6 +26,61 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
   const [newMemberForm, setNewMemberForm] = useState({ name: '', phone: '', email: '' })
   const [isRegisteringMember, setIsRegisteringMember] = useState(false)
 
+  // VIP List Popup Modal
+  const [showVipListModal, setShowVipListModal] = useState(false)
+  const [vipListMembers, setVipListMembers] = useState([])
+  const [vipListLoading, setVipListLoading] = useState(false)
+  const [vipListSearch, setVipListSearch] = useState('')
+  const [vipListTierFilter, setVipListTierFilter] = useState('all') // 'all' | 'vip' | 'gold' | 'silver' | 'bronze' | 'prive'
+  const [vipListStats, setVipListStats] = useState(null)
+
+  const loadVipMembers = async () => {
+    setVipListLoading(true)
+    try {
+      const res = await api('/staff/members')
+      setVipListMembers(res.members || res.customers || [])
+      setVipListStats(res.stats || null)
+    } catch (err) {
+      console.error('Failed to load VIP members:', err)
+    } finally {
+      setVipListLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!showVipListModal) return
+    loadVipMembers()
+    const onKey = (e) => {
+      if (e.key === 'Escape') setShowVipListModal(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showVipListModal])
+
+  const filteredVipMembers = useMemo(() => {
+    return vipListMembers.filter((m) => {
+      const tierCode = (m.tier_code || m.tier || '').toLowerCase()
+      const isPrive = Boolean(m.membership?.is_prive || m.is_prive)
+      const matchTier =
+        vipListTierFilter === 'all'
+          ? true
+          : vipListTierFilter === 'prive'
+          ? isPrive
+          : tierCode === vipListTierFilter
+
+      if (!matchTier) return false
+
+      if (!vipListSearch.trim()) return true
+      const q = vipListSearch.toLowerCase()
+      return (
+        (m.name || m.full_name || '').toLowerCase().includes(q) ||
+        (m.phone || '').toLowerCase().includes(q) ||
+        (m.email || '').toLowerCase().includes(q) ||
+        String(m.id).includes(q)
+      )
+    })
+  }, [vipListMembers, vipListTierFilter, vipListSearch])
+
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
 
@@ -113,6 +168,14 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
 
   const memberPromoDiscountAmount = memberPromoSavings.total
 
+  const curTable = useMemo(() => {
+    return tables.find((t) => t.number === selectedTable)
+  }, [tables, selectedTable])
+
+  const tableRedeemedDiscounts = useMemo(() => {
+    return (curTable?.redeemed_discounts || []).reduce((acc, d) => acc + (d.discount_amount || 0), 0)
+  }, [curTable?.redeemed_discounts])
+
   const manualDiscountAmount = useMemo(() => {
     const remaining = Math.max(0, subtotal - memberPromoDiscountAmount)
     if (discountMode === 'custom') {
@@ -140,8 +203,8 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
   }, [selectedMember, pointsToRedeem, subtotal, memberPromoDiscountAmount, manualDiscountAmount, memberDiscountAmount])
 
   const totalDiscount = useMemo(() => {
-    return Math.round((memberPromoDiscountAmount + manualDiscountAmount + memberDiscountAmount + pointsDiscountAmount) * 100) / 100
-  }, [memberPromoDiscountAmount, manualDiscountAmount, memberDiscountAmount, pointsDiscountAmount])
+    return Math.round((memberPromoDiscountAmount + manualDiscountAmount + memberDiscountAmount + pointsDiscountAmount + tableRedeemedDiscounts) * 100) / 100
+  }, [memberPromoDiscountAmount, manualDiscountAmount, memberDiscountAmount, pointsDiscountAmount, tableRedeemedDiscounts])
 
   const discountAmount = totalDiscount
 
@@ -325,6 +388,13 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
     setCashError('')
     setProcessing(true)
 
+    const discountNote = [
+      memberPromoDiscountAmount > 0 ? `Member Promo Dishes (-${money(memberPromoDiscountAmount)})` : null,
+      discountMode === 'custom' ? (discountReason || 'Custom Discount') : (discountPercent > 0 ? `${discountPercent}%` : null),
+      memberDiscountAmount > 0 ? `${selectedMember?.tier} Member (${selectedMember?.discount_percent}%)` : null,
+      pointsDiscountAmount > 0 ? `Redeemed ${pointsToRedeem} pts` : null,
+    ].filter(Boolean).join(' + ') || null
+
     try {
       const res = await api(`/tables/${selectedTable}/pay`, {
         method: 'POST',
@@ -335,6 +405,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
           tip: 0,
           tax: 0,
           discount_amount: totalDiscount,
+          discount_note: discountNote,
           customer_name: selectedMember
             ? `${selectedMember.name} (${selectedMember.phone})`
             : (customerName ? `${customerName}${customerPhone ? ` (${customerPhone})` : ''}` : null),
@@ -348,12 +419,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
         table: selectedTable,
         subtotal,
         discountAmount: totalDiscount,
-        discountNote: [
-          memberPromoDiscountAmount > 0 ? `Member Promo Dishes (-${money(memberPromoDiscountAmount)})` : null,
-          discountMode === 'custom' ? (discountReason || 'Custom Discount') : (discountPercent > 0 ? `${discountPercent}%` : null),
-          memberDiscountAmount > 0 ? `${selectedMember?.tier} Member (${selectedMember?.discount_percent}%)` : null,
-          pointsDiscountAmount > 0 ? `Redeemed ${pointsToRedeem} pts` : null,
-        ].filter(Boolean).join(' + ') || null,
+        discountNote,
         finalTotal,
         paymentMode,
         tendered: paymentMode === 'cash' ? tendered : finalTotal,
@@ -420,7 +486,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
   const handleRemoveItem = async (itemId, itemName) => {
     const ok = await confirmDialog({
       title: 'Remove Dish from Table',
-      message: `Are you sure you want to remove "${itemName}" from Table #${selectedTable}?`,
+      message: `Remove "${itemName}" from Table #${selectedTable}?`,
       confirmText: 'Yes, Remove Item',
       cancelText: 'Keep Item',
       type: 'danger',
@@ -560,6 +626,14 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
             Active: {tables.filter((t) => t.status === 'occupied').length} / {tables.length} Tables
           </span>
           <button
+            type="button"
+            onClick={() => setShowVipListModal(true)}
+            className="rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-1.5 text-xs sm:text-sm font-semibold text-amber-900 hover:bg-amber-100 hover:text-amber-950 active:bg-amber-200 transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+          >
+            <span>⭐</span>
+            <span>VIP Members List</span>
+          </button>
+          <button
             onClick={() => {
               setMergeSrc(selectedTable ? String(selectedTable) : '')
               setMergeTgt('')
@@ -571,7 +645,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
           </button>
           <button
             onClick={reload}
-            className="rounded-xl bg-warm-900 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white transition"
+            className="rounded-xl bg-brand px-3.5 py-1.5 text-xs sm:text-sm font-medium text-white hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white transition"
           >
             Refresh
           </button>
@@ -675,30 +749,30 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
         <div className="rounded-3xl border border-warm-200 bg-white p-5 shadow-card lg:sticky lg:top-20 h-fit space-y-4">
           {!selectedTable ? (
             <div className="py-12 text-center text-warm-400">
-              <span className="text-4xl">🧾</span>
+              <span className="text-4xl"></span>
               <p className="mt-2 font-display text-base font-semibold text-warm-800">No Table Selected</p>
               <p className="text-xs sm:text-sm text-warm-500">Select a table from the floor map to bill or add dishes.</p>
             </div>
           ) : (
             <>
               {/* Table Header & Quick Add Dishes Action */}
-              <div className="flex items-center justify-between border-b border-warm-100 pb-3">
-                <div>
-                  <h3 className="font-display text-base sm:text-lg font-bold text-warm-900">
+              <div className="flex items-start justify-between gap-2 border-b border-warm-100 pb-3">
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-display text-base sm:text-lg font-bold text-warm-900 leading-tight">
                     Table #{selectedTable} Bill
                   </h3>
-                  <p className="text-xs font-mono text-warm-500 mt-0.5">
+                  <p className="text-[11px] font-mono text-warm-500 mt-1 leading-snug">
                     {activeOrders.length} ticket round{activeOrders.length > 1 ? 's' : ''} · {allActiveItems.length} active dish{allActiveItems.length !== 1 ? 'es' : ''}
                   </p>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     onClick={() => {
                       setDraftOrderItems({})
                       setDishSearch('')
                       setShowAddDishModal(true)
                     }}
-                    className="flex items-center gap-1 rounded-xl bg-brand/10 border border-brand/20 px-2.5 py-1 text-xs font-semibold text-brand hover:bg-brand hover:text-white transition active:scale-95"
+                    className="inline-flex items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-brand/10 border border-brand/20 px-2.5 py-1.5 text-[11px] font-semibold text-brand hover:bg-brand hover:text-white transition active:scale-95"
                     title="Add dishes to table"
                   >
                     <span>+</span>
@@ -709,10 +783,10 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                       type="button"
                       onClick={handleCancelWholeOrder}
                       disabled={processing}
-                      className="flex items-center gap-1 rounded-xl bg-rose-50 border border-rose-200 px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-600 hover:text-white hover:border-rose-600 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                      className="inline-flex items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-rose-50 border border-rose-200 px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-600 hover:text-white hover:border-rose-600 transition active:scale-95 cursor-pointer disabled:opacity-50"
                       title="Cancel entire order and remove all items"
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
                       <span>Cancel Order</span>
@@ -720,7 +794,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                   )}
                   <button
                     onClick={() => setSelectedTable(null)}
-                    className="rounded-lg p-1.5 text-warm-400 hover:bg-warm-100 text-xs"
+                    className="inline-flex items-center justify-center rounded-xl p-1.5 text-warm-400 hover:bg-warm-100 hover:text-warm-700 text-xs transition"
                     title="Deselect"
                   >
                     ✕
@@ -777,31 +851,9 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                 <>
                   {/* Itemized active items with Quantity Controls & Remove */}
                   <div>
-                    <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-warm-600 mb-1.5">
+                    <div className="flex items-center justify-between text-m font-semibold uppercase tracking-wider text-warm-600 mb-2.5">
                       <span>Table Dishes ({allActiveItems.length})</span>
-                      <div className="flex items-center gap-2.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDraftOrderItems({})
-                            setDishSearch('')
-                            setShowAddDishModal(true)
-                          }}
-                          className="text-brand font-semibold text-xs hover:underline flex items-center gap-0.5"
-                        >
-                          <span>+ Add More</span>
-                        </button>
-                        <span className="text-warm-300">·</span>
-                        <button
-                          type="button"
-                          onClick={handleCancelWholeOrder}
-                          disabled={processing}
-                          className="text-rose-600 hover:text-rose-800 hover:underline font-semibold text-xs flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                          title="Cancel entire order and remove all items"
-                        >
-                          <span>Cancel Entire Order</span>
-                        </button>
-                      </div>
+                       
                     </div>
                     <div className="max-h-56 overflow-y-auto space-y-2 divide-y divide-warm-100 pr-1">
                       {allActiveItems.map((it) => (
@@ -883,7 +935,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                           }}
                           className={`rounded-xl py-1.5 font-mono font-medium transition ${
                             discountMode === 'preset' && discountPercent === d
-                              ? 'bg-warm-900 text-white shadow-xs font-semibold'
+                              ? 'bg-brand text-white shadow-xs font-semibold'
                               : 'bg-warm-100 text-warm-800 hover:bg-warm-200'
                           }`}
                         >
@@ -898,7 +950,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                         }}
                         className={`rounded-xl py-1.5 font-mono font-medium transition ${
                           discountMode === 'custom'
-                            ? 'bg-warm-900 text-white shadow-xs font-semibold'
+                            ? 'bg-brand text-white shadow-xs font-semibold'
                             : 'bg-warm-100 text-warm-800 hover:bg-warm-200'
                         }`}
                       >
@@ -953,13 +1005,14 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                       </span>
                       {!selectedMember && (
                         <div className="flex items-center gap-2">
-                          <Link
-                            to="/members"
-                            className="text-[11px] font-semibold text-warm-600 hover:text-brand hover:underline font-mono"
-                            title="Open VIP Customers Directory"
+                          <button
+                            type="button"
+                            onClick={() => setShowVipListModal(true)}
+                            className="text-[11px] font-semibold text-warm-600 hover:text-brand hover:underline font-mono cursor-pointer"
+                            title="Open VIP Members Directory popup"
                           >
-                            VIP List ↗
-                          </Link>
+                            VIP List
+                          </button>
                           <span className="text-warm-300">·</span>
                           <button
                             type="button"
@@ -1024,7 +1077,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                       </div>
                     ) : (
                       /* Selected Member Card */
-                      <div className="rounded-2xl border border-amber-200/90 bg-gradient-to-r from-amber-50/70 to-orange-50/50 p-3 space-y-2 text-xs shadow-2xs">
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 space-y-2 text-xs shadow-2xs">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-amber-200 text-amber-900 font-bold shadow-2xs">
@@ -1079,15 +1132,15 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
 
                         {/* Paid Annual Membership (Maison Privé) Badge */}
                         {selectedMember.membership?.is_prive && (
-                          <div className="rounded-xl bg-gradient-to-r from-purple-900 to-indigo-900 p-2 text-white flex items-center justify-between shadow-xs">
-                            <div className="flex items-center gap-1.5">
+                          <div className="rounded-xl bg-[#242024] p-2.5 text-[#F5EBDD] flex items-center justify-between shadow-xs border border-[#C8B084]/45">
+                            <div className="flex items-center gap-2">
                               <span className="text-sm">👑</span>
                               <div>
-                                <p className="font-bold text-[11px] tracking-wide">Maison Privé Member</p>
-                                <p className="text-[9px] text-purple-200">Priority Concierge &amp; Welcome Drinks</p>
+                                <p className="font-bold text-[11px] tracking-wide text-[#F5EBDD]">Maison Privé Member</p>
+                                <p className="text-[9px] text-[#DFC9A6]">Priority Concierge &amp; Welcome Drinks</p>
                               </div>
                             </div>
-                            <span className="text-[10px] font-mono text-purple-200 uppercase bg-purple-800/80 px-2 py-0.5 rounded-full border border-purple-600/50">
+                            <span className="text-[10px] font-mono text-[#E8D5B5] uppercase bg-[#352F35] px-2 py-0.5 rounded-full border border-[#C8B084]/40">
                               Active
                             </span>
                           </div>
@@ -1187,7 +1240,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                           onClick={() => setSplitCount(n)}
                           className={`rounded-xl py-1.5 font-mono font-medium transition ${
                             splitCount === n
-                              ? 'bg-warm-900 text-white shadow-xs font-semibold'
+                              ? 'bg-brand text-white shadow-xs font-semibold'
                               : 'bg-warm-100 text-warm-800 hover:bg-warm-200'
                           }`}
                         >
@@ -1232,6 +1285,13 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                       </div>
                     )}
 
+                    {tableRedeemedDiscounts > 0 && (
+                      <div className="flex justify-between text-emerald-700 font-medium bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-200">
+                        <span>🎁 Redeemed Reward Vouchers ({curTable?.redeemed_discounts?.map(d => d.name).join(', ')})</span>
+                        <span className="font-mono font-bold">-{money(tableRedeemedDiscounts)}</span>
+                      </div>
+                    )}
+
                     <div className="flex justify-between text-base sm:text-lg font-bold text-warm-900 pt-1.5 border-t border-warm-100">
                       <span>Total Due</span>
                       <span className="font-mono text-brand text-lg sm:text-xl font-bold">{money(finalTotal)}</span>
@@ -1267,7 +1327,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                           }}
                           className={`rounded-xl py-2 font-display text-center font-medium transition ${
                             paymentMode === m.id
-                              ? 'bg-warm-900 text-white shadow-xs font-semibold'
+                              ? 'bg-brand text-white shadow-xs font-semibold'
                               : 'bg-warm-100 text-warm-800 hover:bg-warm-200'
                           }`}
                         >
@@ -1312,7 +1372,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                             }}
                             className={`rounded-lg px-2.5 py-1 font-mono text-xs font-semibold transition active:scale-95 ${
                               parseFloat(cashTendered) === amt
-                                ? 'bg-warm-900 text-white shadow-xs'
+                                ? 'bg-brand text-white shadow-xs'
                                 : 'bg-white border border-warm-300 text-warm-800 hover:bg-warm-100'
                             }`}
                           >
@@ -1401,7 +1461,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                     onClick={() => setDishCategory(cat)}
                     className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold capitalize transition ${
                       dishCategory === cat
-                        ? 'bg-warm-900 text-white shadow-xs'
+                        ? 'bg-brand text-white shadow-xs'
                         : 'bg-warm-100 text-warm-700 hover:bg-warm-200'
                     }`}
                   >
@@ -1466,7 +1526,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
                         <button
                           type="button"
                           onClick={() => handleDraftQty(item, 1)}
-                          className="w-full rounded-xl bg-warm-900 py-1.5 text-xs font-semibold text-white hover:bg-warm-800 active:scale-95 transition"
+                          className="w-full rounded-xl bg-brand py-1.5 text-xs font-semibold text-white hover:bg-brand-dark active:scale-95 transition"
                         >
                           + Add
                         </button>
@@ -1756,7 +1816,7 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
 
         <button
           onClick={handlePrintReceipt}
-          className="flex-1 rounded-xl bg-warm-900 py-2.5 font-display text-xs sm:text-sm font-bold text-white shadow-md hover:bg-brand hover:text-white active:bg-brand-dark transition"
+          className="flex-1 rounded-xl bg-brand py-2.5 font-display text-xs sm:text-sm font-bold text-white shadow-md hover:bg-brand-dark hover:text-white active:bg-brand-900 transition"
         >
           Print Receipt
         </button>
@@ -1915,6 +1975,284 @@ export default function CashierBilling({ orders = [], tables = [], menu = [], re
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* VIP Members List Modal */}
+      {showVipListModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-5 animate-in fade-in duration-150"
+          onClick={() => setShowVipListModal(false)}
+        >
+          <div
+            className="relative w-full max-w-4xl max-h-[90vh] flex flex-col rounded-3xl bg-white shadow-2xl border border-warm-200 overflow-hidden text-left"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-5 sm:p-6 border-b border-warm-100 flex items-center justify-between gap-3 bg-warm-50">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-900 border border-amber-300 shadow-xs text-xl">
+                  ⭐
+                </div>
+                <div>
+                  <h3 className="font-display text-lg sm:text-xl font-bold text-warm-900">
+                    VIP &amp; Loyalty Members Directory
+                  </h3>
+                  <p className="text-xs text-warm-500 font-mono mt-0.5">
+                    {selectedTable
+                      ? `Select a member to apply to Table #${selectedTable} (${curTable?.status || 'Active'})`
+                      : 'View patron profiles, spending tiers, and points balances'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowVipListModal(false)}
+                className="rounded-xl p-2 text-warm-400 hover:bg-warm-100 hover:text-warm-700 transition cursor-pointer"
+              >
+                <Icons.Close />
+              </button>
+            </div>
+
+            {/* Search & Tier Filters */}
+            <div className="p-4 sm:p-5 border-b border-warm-100 bg-warm-50/40 space-y-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    placeholder="Search member by name, phone (e.g. 08...), or ID..."
+                    value={vipListSearch}
+                    onChange={(e) => setVipListSearch(e.target.value)}
+                    className="w-full rounded-xl border border-warm-300 bg-white pl-9 pr-8 py-2 text-xs sm:text-sm font-medium outline-none focus:border-brand shadow-2xs"
+                  />
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-warm-400 text-xs">
+                    🔍
+                  </span>
+                  {vipListSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setVipListSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-warm-400 hover:text-warm-700 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={loadVipMembers}
+                  className="rounded-xl border border-warm-300 bg-white px-3.5 py-2 text-xs font-semibold text-warm-700 hover:bg-warm-100 transition shadow-2xs shrink-0 cursor-pointer"
+                >
+                  ↻ Refresh List
+                </button>
+              </div>
+
+              {/* Tier Filter Tabs */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+                {[
+                  { id: 'all', label: `All Members (${vipListMembers.length})` },
+                  { id: 'prive', label: `👑 Maison Privé (${vipListStats?.prive_count ?? 0})` },
+                  { id: 'vip', label: `⭐ VIP (${vipListStats?.vip_count ?? 0})` },
+                  { id: 'gold', label: `🥇 Gold (${vipListStats?.gold_count ?? 0})` },
+                  { id: 'silver', label: `🥈 Silver (${vipListStats?.silver_count ?? 0})` },
+                  { id: 'bronze', label: `🥉 Bronze (${vipListStats?.bronze_count ?? 0})` },
+                ].map((tf) => (
+                  <button
+                    key={tf.id}
+                    type="button"
+                    onClick={() => setVipListTierFilter(tf.id)}
+                    className={`whitespace-nowrap rounded-xl px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                      vipListTierFilter === tf.id
+                        ? 'bg-brand text-white shadow-xs font-bold'
+                        : 'bg-white text-warm-700 border border-warm-200 hover:bg-warm-100'
+                    }`}
+                  >
+                    {tf.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Members List Container */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+              {vipListLoading ? (
+                <div className="py-16 text-center text-warm-500 font-mono text-xs">
+                  Loading VIP member directory...
+                </div>
+              ) : filteredVipMembers.length === 0 ? (
+                <div className="py-16 text-center text-warm-500">
+                  <div className="text-3xl mb-2">🔍</div>
+                  <h4 className="font-display font-bold text-warm-900 text-sm">No Members Found</h4>
+                  <p className="text-xs text-warm-500 mt-1">No patrons match your search or filter.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {filteredVipMembers.map((m) => {
+                    const tier = (m.tier_code || m.tier || 'bronze').toLowerCase()
+                    const isVipTier = tier === 'vip'
+                    const isGoldTier = tier === 'gold'
+                    const isSilverTier = tier === 'silver'
+                    const isPrive = Boolean(m.membership?.is_prive || m.is_prive)
+                    const isSelected = selectedMember?.id === m.id
+
+                    return (
+                      <div
+                        key={m.id}
+                        className={`rounded-2xl border p-4 transition shadow-xs flex flex-col justify-between gap-3 ${
+                          isSelected
+                            ? 'border-brand bg-rose-50/40 ring-1 ring-brand'
+                            : 'border-warm-200 bg-white hover:border-warm-300 hover:bg-warm-50/30'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2.5">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-display font-bold text-warm-900 text-sm">
+                                {m.name || m.full_name}
+                              </span>
+                              <span className="font-mono text-[10px] text-warm-400">
+                                MM · {String(m.id).padStart(5, '0')}
+                              </span>
+                            </div>
+                            <div className="font-mono text-xs text-warm-600 mt-0.5">
+                              📞 {m.phone}
+                            </div>
+                            {m.email && (
+                              <div className="text-[11px] text-warm-400 truncate max-w-[220px]">
+                                {m.email}
+                              </div>
+                            )}
+                            {m.date_of_birth && (
+                              <div className="text-[11px] font-mono text-warm-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                <span>🎂 {m.date_of_birth}</span>
+                                {m.birthday_info?.is_birthday_month && (
+                                  <span className="rounded bg-rose-100 text-rose-800 px-1.5 py-0.2 text-[9px] font-bold uppercase">
+                                    Birthday Month
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <span
+                              className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                isVipTier
+                                  ? 'bg-purple-100 text-purple-900 border border-purple-200'
+                                  : isGoldTier
+                                  ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                                  : isSilverTier
+                                  ? 'bg-slate-100 text-slate-800 border border-slate-200'
+                                  : 'bg-warm-100 text-warm-700 border border-warm-200'
+                              }`}
+                            >
+                              {isVipTier ? 'VIP Elite' : `${m.tier || tier} Tier`}
+                            </span>
+                            {isPrive && (
+                              <span className="rounded-md bg-[#242024] border border-[#C8B084]/40 px-1.5 py-0.5 text-[9px] font-bold text-[#E8D5B5] uppercase tracking-wider">
+                                👑 Maison Privé
+                              </span>
+                            )}
+                            {isPrive && m.membership?.end_date && (
+                              <span className="text-[10px] font-mono text-stone-600">
+                                Exp: {m.membership.end_date}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Loyalty Balance & Stats */}
+                        <div className="grid grid-cols-3 gap-2 bg-warm-50/80 rounded-xl p-2.5 border border-warm-100 text-xs">
+                          <div>
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-warm-500 block">
+                              Points
+                            </span>
+                            <span className="font-mono font-bold text-amber-800 text-xs sm:text-sm">
+                              {(m.points || m.points_balance || 0).toLocaleString()} pts
+                            </span>
+                            <span className="text-[10px] text-warm-400 font-mono block">
+                              ≈ ${((m.points || m.points_balance || 0) / 100).toFixed(2)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-warm-500 block">
+                              Spent
+                            </span>
+                            <span className="font-mono font-bold text-warm-900 text-xs sm:text-sm">
+                              {money(m.total_spent || m.lifetime_spending || 0)}
+                            </span>
+                            {m.tier_info?.next_tier && (
+                              <span className="text-[10px] text-warm-400 font-mono block">
+                                {money(m.tier_info.amount_needed)} to {m.tier_info.next_tier}
+                              </span>
+                            )}
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-warm-500 block">
+                              Rate
+                            </span>
+                            <span className="font-mono font-bold text-warm-900 text-xs sm:text-sm">
+                              {m.points_multiplier || 1}x Pts
+                            </span>
+                            <span className="text-[10px] text-warm-500 font-mono block">
+                              {m.discount_percent ? `${m.discount_percent}% Off` : '0% Off'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Action CTA */}
+                        <div className="pt-1 flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-semibold text-warm-600">
+                            {m.discount_percent ? `${m.discount_percent}% Tier Discount` : 'Standard Earn Rate'}
+                            {m.total_points_earned > 0 ? ` · ${m.total_points_earned.toLocaleString()} earned` : ''}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleSelectMember(m)
+                              setShowVipListModal(false)
+                            }}
+                            className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                              isSelected
+                                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                : 'bg-brand text-white hover:bg-brand-dark'
+                            }`}
+                          >
+                            <span>{isSelected ? '✓ Assigned' : selectedTable ? `Select for Table #${selectedTable}` : 'Select Member'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 sm:p-5 border-t border-warm-100 bg-warm-50/60 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowVipListModal(false)
+                  setShowRegisterMemberModal(true)
+                }}
+                className="rounded-xl border border-warm-300 bg-white px-4 py-2 text-xs font-bold text-warm-800 hover:bg-warm-100 hover:border-warm-400 transition shadow-2xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>+</span>
+                <span>Register New Patron</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowVipListModal(false)}
+                className="rounded-xl bg-warm-200 px-5 py-2 text-xs font-bold text-warm-800 hover:bg-warm-300 transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

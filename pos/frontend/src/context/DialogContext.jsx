@@ -227,7 +227,7 @@ export function DialogProvider({ children }) {
                         ? 'bg-rose-600 hover:bg-rose-700 active:bg-rose-800'
                         : modal.type === 'warning'
                         ? 'bg-amber-600 hover:bg-amber-700 active:bg-amber-800'
-                        : 'bg-warm-900 hover:bg-warm-800 active:bg-warm-950'
+                        : 'bg-brand hover:bg-brand-dark active:bg-brand-900'
                     }`}
                   >
                     {modal.confirmText}
@@ -237,7 +237,7 @@ export function DialogProvider({ children }) {
                 <button
                   type="button"
                   onClick={modal.onClose}
-                  className="w-full sm:w-auto rounded-xl bg-warm-900 px-5 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-warm-800 active:bg-warm-950 transition shadow-xs"
+                  className="w-full sm:w-auto rounded-xl bg-brand px-5 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-brand-dark active:bg-brand-900 transition shadow-xs"
                 >
                   {modal.buttonText || 'Understood'}
                 </button>

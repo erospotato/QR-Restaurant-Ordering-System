@@ -271,7 +271,7 @@ export default function InventoryManagement({ data = {}, reload = () => {}, canM
               onClick={() => setFilter('all')}
               className={`rounded-lg px-2.5 py-1 transition ${
                 filter === 'all'
-                  ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white shadow-xs font-semibold'
+                  ? 'bg-brand text-white hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white shadow-xs font-semibold'
                   : 'text-warm-600 hover:text-warm-950 hover:bg-warm-200/70 active:bg-warm-300 active:text-warm-950'
               }`}
             >
@@ -347,7 +347,7 @@ export default function InventoryManagement({ data = {}, reload = () => {}, canM
 
           <button
             onClick={reload}
-            className="rounded-xl bg-warm-900 px-3 py-1.5 text-xs sm:text-sm font-medium text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white transition"
+            className="rounded-xl bg-brand px-3 py-1.5 text-xs sm:text-sm font-medium text-white hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white transition"
           >
             Refresh
           </button>
@@ -770,7 +770,7 @@ function AuditCountModal({ ingredient, onClose, onSaved }) {
           <button
             type="submit"
             disabled={busy}
-            className="flex-1 rounded-xl bg-warm-900 py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white transition"
+            className="flex-1 rounded-xl bg-brand py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white transition"
           >
             {busy ? 'Saving...' : 'Set Physical Count'}
           </button>
@@ -931,7 +931,7 @@ function EditSupplyModal({ ingredient, onClose, onSaved }) {
                 onClick={() => setUnit(u)}
                 className={`px-2 py-0.5 rounded-md text-[11px] font-mono transition ${
                   unit === u
-                    ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white font-semibold'
+                    ? 'bg-brand text-white hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white font-semibold'
                     : 'bg-warm-100 text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950'
                 }`}
               >
@@ -1078,7 +1078,7 @@ function AddSupplyModal({ onClose, onSaved }) {
               onClick={() => setForm({ ...form, unit: u })}
               className={`px-2 py-0.5 rounded-md text-[11px] font-mono transition ${
                 form.unit === u
-                  ? 'bg-warm-900 text-white hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white font-semibold'
+                  ? 'bg-brand text-white hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white font-semibold'
                   : 'bg-warm-100 text-warm-700 hover:bg-warm-200 hover:text-warm-950 active:bg-warm-300 active:text-warm-950'
               }`}
             >
@@ -1225,7 +1225,7 @@ function ReorderSheetModal({ items, totalCost, copied, onCopy, onClose }) {
               <button
                 type="button"
                 onClick={onCopy}
-                className="flex-1 rounded-xl bg-warm-900 py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white transition flex items-center justify-center gap-1.5"
+                className="flex-1 rounded-xl bg-brand py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white transition flex items-center justify-center gap-1.5"
               >
                 <span>{copied ? '✓ Copied PO Text!' : '📋 Copy Supplier Text'}</span>
               </button>

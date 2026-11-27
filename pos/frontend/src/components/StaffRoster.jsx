@@ -169,7 +169,7 @@ export default function StaffRoster({ currentUserId, reload = () => {} }) {
             setShowAdd(true)
             setAddError('')
           }}
-          className="rounded-2xl bg-warm-900 px-4 py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-soft hover:bg-warm-800 hover:text-white active:bg-warm-950 active:text-white transition flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+          className="rounded-2xl bg-brand px-4 py-2.5 font-display text-xs sm:text-sm font-semibold text-white shadow-soft hover:bg-brand-dark hover:text-white active:bg-brand-900 active:text-white transition flex items-center justify-center gap-2 shrink-0 cursor-pointer"
         >
           <span className="text-base leading-none">+</span>
           <span>Add New Staff</span>
@@ -229,7 +229,7 @@ export default function StaffRoster({ currentUserId, reload = () => {} }) {
                 onClick={() => setRoleFilter(r.id)}
                 className={`whitespace-nowrap rounded-xl px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
                   active
-                    ? 'bg-warm-900 text-white shadow-xs'
+                    ? 'bg-brand text-white shadow-xs'
                     : 'bg-warm-100/70 text-warm-700 hover:bg-warm-200/80 hover:text-warm-950'
                 }`}
               >
@@ -444,7 +444,7 @@ export default function StaffRoster({ currentUserId, reload = () => {} }) {
                 <button
                   type="submit"
                   disabled={addLoading}
-                  className="rounded-xl bg-warm-900 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-soft hover:bg-warm-800 active:bg-warm-950 transition disabled:opacity-50"
+                  className="rounded-xl bg-brand px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-soft hover:bg-brand-dark active:bg-brand-900 transition disabled:opacity-50"
                 >
                   {addLoading ? 'Creating...' : 'Create Account'}
                 </button>
@@ -569,7 +569,7 @@ export default function StaffRoster({ currentUserId, reload = () => {} }) {
                 <button
                   type="submit"
                   disabled={editLoading}
-                  className="rounded-xl bg-warm-900 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-soft hover:bg-warm-800 active:bg-warm-950 transition disabled:opacity-50"
+                  className="rounded-xl bg-brand px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-soft hover:bg-brand-dark active:bg-brand-900 transition disabled:opacity-50"
                 >
                   {editLoading ? 'Saving...' : 'Save Changes'}
                 </button>

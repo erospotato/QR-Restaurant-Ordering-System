@@ -63,7 +63,7 @@ function ScanRedirect() {
           <p className="mt-2 text-xs sm:text-sm text-warm-600 leading-relaxed">{error}</p>
           <button
             onClick={() => window.location.reload()}
-            className="mt-4 rounded-xl bg-warm-900 px-4 py-2 text-xs font-semibold text-white shadow-xs"
+            className="mt-4 rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white hover:bg-brand-dark active:bg-brand-900 shadow-xs transition"
           >
             Retry Scan
           </button>
